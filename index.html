@@ -6643,6 +6643,16 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^This attack does (\d+) damage for each of your Benched \[([A-Z])\] (?:Pokémon|Pokemon)$/i))) return {bonusPerBenchPokemon:Number(m[1]),benchPokemonType:m[2]};
         if((m=t.match(/^This attack does (\d+) more damage for each damage counter on this (?:Pokémon|Pokemon)$/i))) return {bonusPerDamageCounter:Number(m[1])};
         if((m=t.match(/^This attack also does (\d+) damage to each of your opponent's Benched (?:Pokémon|Pokemon)$/i))) return {benchAllDamage:Number(m[1])};
+        if((m=t.match(/^Flip a coin\. If heads, this attack does (\d+) more damage$/i))) return {coinCount:1,coinBonusDamage:Number(m[1])};
+        if((m=t.match(/^Flip (\d+) coins?\. This attack does (\d+) (more )?damage for each heads$/i))) return m[3] ? {coinCount:Number(m[1]),coinBonusDamage:Number(m[2])} : {coinCount:Number(m[1]),coinDamagePerHeads:Number(m[2])};
+        if(/^Discard all Energy from this (?:Pokémon|Pokemon)$/i.test(t)) return {discardAllEnergy:true};
+        if(/^Discard a random Energy from this (?:Pokémon|Pokemon)$/i.test(t)) return {discardRandomEnergy:1};
+        if((m=t.match(/^Discard (?:a|an) \[([GRWLPFDM])\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:1,energyType:this.energyMap[m[1].toUpperCase()]||null};
+        if((m=t.match(/^Discard (\d+) \[([GRWLPFDM])\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:Number(m[1]),energyType:this.energyMap[m[2].toUpperCase()]||null};
+        if(/^Draw a card$/i.test(t) || /^Draw 1 card$/i.test(t)) return {drawCards:1};
+        if((m=t.match(/^Draw (\d+) cards?$/i))) return {drawCards:Number(m[1])};
+        if(/^Switch this (?:Pokémon|Pokemon) with 1 of your Benched (?:Pokémon|Pokemon)$/i.test(t)) return {switchSelf:true};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is a (?:Pokémon|Pokemon) ex, this attack does (\d+) more damage$/i))) return {bonusIfOpponentEx:Number(m[1])};
         return null;
       },
       attacksFrom(game) {
@@ -7006,7 +7016,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             const card=c.playable;
             const jpUrl = japaneseCardReferenceUrl(c.sourceSet, c.number);
             const jpLink = jpUrl ? `<a class="mt-1 text-[9px] font-black text-sky-700 underline text-center" href="${jpUrl}" target="_blank" rel="noopener noreferrer">日本語カード情報 ↗</a>` : '';
-            const jpName=c.jpDetail?.nameJa||c.name||card.jpName||getCardDisplayName(card); const jpAttack=c.jpDetail?.attacks?.[0]?.name||getCardDisplayAttackName(card,card.attacks?.[0],0); return `<div class="flex flex-col items-center rounded-xl border border-slate-200 bg-slate-50 p-2 min-w-0"><div class="cursor-pointer">${ui.renderMiniCard(card.id,{displayName:jpName,displayAttackName:jpAttack,onClick:`ui.openCardModal(CARD_MAP['${card.id}'])`})}</div><div class="mt-1 text-[10px] font-black text-sky-800 text-center">${safe(jpName)}</div><div class="mt-1 text-[10px] text-slate-600 font-bold text-center">${c.number?`#${safe(c.number)} · `:''}${card.category==='Pokemon'?(card.stage==='Basic'?'たね':card.stage==='Stage1'?'1進化':'2進化'):card.subType==='Supporter'?'サポート':'トレーナー'} ・ ${RARITY_STARS[card.rarity]||card.rarity}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):japaneseMissingDetailHtml(card,jpName)}${jpLink}</div>`;
+            const jpName=c.jpDetail?.nameJa||c.name||card.jpName||getCardDisplayName(card); const jpAttack=c.jpDetail?.attacks?.[0]?.name||getCardDisplayAttackName(card,card.attacks?.[0],0); const nameNote=card.nameLanguage==='en-fallback'?'英語名（日本語未照合）':card.nameLanguage==='ja-derived'?'別収録の日本語名':'日本語名'; const rarityNote=(RARITY_STARS[card.rarity]||card.rarity)+(card.rarityEstimated?'（暫定）':''); return `<div class="flex flex-col items-center rounded-xl border border-slate-200 bg-slate-50 p-2 min-w-0"><div class="cursor-pointer">${ui.renderMiniCard(card.id,{displayName:jpName,displayAttackName:jpAttack,onClick:`ui.openCardModal(CARD_MAP['${card.id}'])`})}</div><div class="mt-1 text-[10px] font-black text-sky-800 text-center">${safe(jpName)}<span class="block text-[8px] text-amber-700">${nameNote}</span></div><div class="mt-1 text-[10px] text-slate-600 font-bold text-center">${c.number?`#${safe(c.number)} · `:''}${card.category==='Pokemon'?(card.stage==='Basic'?'たね':card.stage==='Stage1'?'1進化':'2進化'):card.subType==='Supporter'?'サポート':'トレーナー'} ・ ${rarityNote}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):japaneseMissingDetailHtml(card,jpName)}${jpLink}</div>`;
           }
           const number = c.number ? `#${safe(c.number)}` : '';
           const jpUrl = japaneseCardReferenceUrl(c.sourceSet, c.number);
@@ -7018,9 +7028,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           const japaneseImageSource = c.number && c.sourceSet ? `https://game.pokemontcgpocket.app/ja/tcgp/${encodeURIComponent(setCode)}/${imageNum}/high.webp` : '';
           const japaneseImageFallbackUrl = japaneseImageSource ? `https://www.pokemontcgpocket.app/_next/image?q=75&url=${encodeURIComponent(japaneseImageSource)}&w=3840` : '';
           const displayName = c.jpDetail?.nameJa || c.name || c.playable?.jpName || 'カード情報未登録';
-          const artFallback = `<div class="aspect-[3/4] rounded-lg bg-gradient-to-br from-slate-100 via-white to-slate-200 border border-slate-200 flex flex-col items-center justify-center p-2 text-center"><div class="text-[10px] font-black text-slate-400">${number}</div><div class="text-2xl my-1">${/ex|メガ/i.test(displayName)?'⭐':'🎴'}</div><div class="text-[9px] text-slate-400 mt-1">${c.jpDetail?'日本語データ照合済み':'日本語名表示'}</div></div>`;
+          const nameSourceLabel=c.nameLanguage==='en-fallback'?'英語名・日本語未照合':c.nameLanguage==='ja-derived'?'別収録の日本語名':c.jpDetail?'日本語データ照合済み':'日本語名表示';
+          const artFallback = `<div class="aspect-[3/4] rounded-lg bg-gradient-to-br from-slate-100 via-white to-slate-200 border border-slate-200 flex flex-col items-center justify-center p-2 text-center"><div class="text-[10px] font-black text-slate-400">${number}</div><div class="text-2xl my-1">${/ex|メガ/i.test(displayName)?'⭐':'🎴'}</div><div class="text-[9px] text-slate-400 mt-1">${nameSourceLabel}</div></div>`;
           const cardArt = japaneseImageUrl ? `<img src="${japaneseImageUrl}" data-fallback-src="${japaneseImageFallbackUrl}" alt="${safe(displayName)} ${number}" loading="lazy" decoding="async" class="w-full rounded-lg object-contain bg-slate-50" onerror="packSystem.imgFallback(this)">${artFallback.replace('flex flex-col','hidden flex-col')}` : artFallback;
-          return `<div class="flex flex-col rounded-xl border border-slate-200 bg-white p-2 min-w-0 shadow-sm">${cardArt}<div class="mt-1 text-sm font-black text-slate-900 text-center break-words">${safe(displayName)}</div><div class="mt-1 text-[10px] text-slate-500 font-bold text-center">${c.verifiedName?(c.partialVerified?'収録名・番号照合済み':'収録名確認済み'):c.featured?'注目カード（未照合）':'ゲーム内登録名'}${c.rarity?` ・ レアリティ ${safe(RARITY_STARS[c.rarity]||c.rarity)}`:' ・ レアリティ未登録'}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):japaneseMissingDetailHtml(c.playable,displayName)}${jpLink}</div>`;
+          return `<div class="flex flex-col rounded-xl border border-slate-200 bg-white p-2 min-w-0 shadow-sm">${cardArt}<div class="mt-1 text-sm font-black text-slate-900 text-center break-words">${safe(displayName)}</div><div class="mt-1 text-[10px] text-slate-500 font-bold text-center">${c.verifiedName?(c.partialVerified?'収録名・番号照合済み':'収録名確認済み'):c.featured?'注目カード（未照合）':'ゲーム内登録名'} ・ ${nameSourceLabel}${c.rarity?` ・ レアリティ ${safe(RARITY_STARS[c.rarity]||c.rarity)}${c.rarityEstimated?'（暫定）':''}`:' ・ レアリティ未登録'}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):japaneseMissingDetailHtml(c.playable,displayName)}${jpLink}</div>`;
         }).join('') + moreButton;
         grid.scrollTop = keepScroll ? prevScroll : 0;
       },
@@ -8603,6 +8614,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(atk.genericEffect?.bonusPerOpponentEnergy) dmg += Number(atk.genericEffect.bonusPerOpponentEnergy||0)*opp.active.energies.length;
         if(atk.genericEffect?.bonusPerBenchPokemon) { const type=this.energyEffectType(atk.genericEffect.benchPokemonType); const benchCount=s.bench.filter(b=>!type||CARD_MAP[b.cardId]?.type===type).length; dmg += Number(atk.genericEffect.bonusPerBenchPokemon||0)*benchCount; }
         if(atk.genericEffect?.bonusPerDamageCounter) dmg += Number(atk.genericEffect.bonusPerDamageCounter||0)*Math.floor(Math.max(0,attInst.maxHp-attInst.hp)/10);
+        if(atk.genericEffect?.bonusIfOpponentEx && defC.isEx) dmg += Number(atk.genericEffect.bonusIfOpponentEx||0);
         switch (atk.fx) {
           case 'bench_lightning30': dmg = s.bench.filter(b => CARD_MAP[b.cardId].type === 'Lightning').length * 30 + bonus; break;
           case 'bench20': dmg += s.bench.length * 20; break;
@@ -8793,6 +8805,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
         if (!s.active || !opp.active) return;
         const attC = CARD_MAP[s.active.cardId];
+        const attackingInst = s.active;
         const declaredAtk = attC.attacks[atkIdx];
         if (!declaredAtk) return;
         const isGenomeHack = declaredAtk.fx === 'genome';
@@ -8826,7 +8839,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         // Attacks that need a bench target: the player picks it, the CPU chooses automatically.
         const genericBenchDamage=Number(atk.genericEffect?.benchDamage||0);
         const genericBenchAllDamage=Number(atk.genericEffect?.benchAllDamage||0);
-        const pickKind = (atk.fx === 'bench_snipe30' || genericBenchDamage>0) ? 'oppBench' : atk.fx === 'metal_turbo' ? 'ownBench' : null;
+        const pickKind = (atk.fx === 'bench_snipe30' || genericBenchDamage>0) ? 'oppBench' : (atk.fx === 'metal_turbo' || atk.genericEffect?.switchSelf) ? 'ownBench' : null;
         if (pickKind && !choice) {
           const list = pickKind === 'oppBench' ? opp.bench : s.bench;
           if (list.length === 0) choice = { bench: -1 };
@@ -8836,7 +8849,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             this.actionLocked = true;
             const html = list.map((b, bi) => `<div onclick="battle.resolveAttackChoice(${bi});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${b.hp}/${b.maxHp}・エネ${b.energies.length}</span></div>`).join('');
             this.render();
-            const attackLabel=getCardDisplayAttackName(CARD_MAP[s.active.cardId],atk,isGenomeHack?copiedAttackIdx:atkIdx); ui.openSelectModal(pickKind === 'oppBench' ? `${attackLabel}：${atk.fx === 'bench_snipe30' ? 30 : genericBenchDamage}ダメージを与える相手のベンチを選択` : `${attackLabel}：鋼エネルギーを2個つけるベンチを選択`, html, true);
+            const attackLabel=getCardDisplayAttackName(CARD_MAP[s.active.cardId],atk,isGenomeHack?copiedAttackIdx:atkIdx);
+            const selectionTitle=pickKind==='oppBench' ? `${attackLabel}：${atk.fx === 'bench_snipe30' ? 30 : genericBenchDamage}ダメージを与える相手のベンチを選択` : atk.fx==='metal_turbo' ? `${attackLabel}：鋼エネルギーを2個つけるベンチを選択` : `${attackLabel}：入れ替える自分のベンチポケモンを選択`;
+            ui.openSelectModal(selectionTitle, html, true);
             return;
           } else if (pickKind === 'oppBench') {
             choice = { bench: this.chooseSnipeTarget(side, atk.fx === 'bench_snipe30' ? 30 : genericBenchDamage, false)?.i ?? -1 };
@@ -8846,6 +8861,15 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }
         }
 
+        const coinEffect=atk.genericEffect||{};
+        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads){
+          const coinCount=Math.max(1,Math.min(4,Number(coinEffect.coinCount)||1));
+          let heads=0;
+          for(let coin=0;coin<coinCount;coin++) if(Math.random()<0.5) heads++;
+          const rolledDamage=coinEffect.coinDamagePerHeads ? Number(coinEffect.coinDamagePerHeads)*heads : Number(atk.damage||0)+Number(coinEffect.coinBonusDamage||0)*heads;
+          atk={...atk,damage:rolledDamage};
+          this.log(`コイントス！オモテ${heads}回／${coinCount}回。`);
+        }
         const prev = this.calcDamagePreview(s.active, atk, opp.active, side);
         const dmg = prev.final;
         this.resolvingAttackSide = side;
@@ -8870,6 +8894,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           for(let n=0;n<Number(ge.discardEnergy);n++){const idx=energyType?s.active.energies.indexOf(energyType):s.active.energies.length-1;if(idx<0)break;s.active.energies.splice(idx,1);}
           this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーを${Number(ge.discardEnergy)}個トラッシュ。`);
         }
+        if(ge.discardAllEnergy){const removed=s.active.energies.length;s.active.energies=[];if(removed)this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをすべてトラッシュ。`);}
+        if(ge.discardRandomEnergy&&s.active.energies.length){const index=Math.floor(Math.random()*s.active.energies.length);s.active.energies.splice(index,1);this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをランダムに1個トラッシュ。`);}
+        if(ge.drawCards){const before=s.hand.length;this.drawCards(side,Number(ge.drawCards));const drawn=s.hand.length-before;this.log(`${getCardDisplayName(attC)}のワザ効果：山札を${drawn}枚引いた！`);}
         const selfDamageAttack = atk.fx === 'selfdmg30' || Number(ge.selfDamage||0)>0;
         if (selfDamageAttack) s.active.hp -= atk.fx === 'selfdmg30' ? 30 : Number(ge.selfDamage||0);
 
@@ -8903,6 +8930,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         this.checkKO(side === 'player' ? 'opp' : 'player', 'active', 0);
         if (!this.over && selfDamageAttack) this.checkKO(side, 'active', 0);
+        if(!this.over&&!this.pendingSelfKO&&atk.genericEffect?.switchSelf&&s.active===attackingInst&&choice&&choice.bench>=0&&s.bench[choice.bench]){
+          const outgoing=s.active;
+          s.active=s.bench[choice.bench];
+          s.bench[choice.bench]=outgoing;
+          this.log(`${getCardDisplayName(CARD_MAP[s.active.cardId])}とバトルポケモンを入れ替えた！`);
+        }
         this.resolvingAttackSide = null;
         if (this.over) return;
         this.render();
