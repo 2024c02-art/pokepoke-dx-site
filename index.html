@@ -1462,7 +1462,7 @@
       { id: 't_pokeball', name: 'モンスターボール', category: 'Trainer', subType: 'Item', type: 'Trainer', rarity: 'C', pack: 'a1_pikachu', text: '自分の山札から「たねポケモン」をランダムに1枚手札に加える。' },
       { id: 't_potion', name: 'きずぐすり', category: 'Trainer', subType: 'Item', type: 'Trainer', rarity: 'C', pack: 'a1_mewtwo', text: '自分のポケモン1匹のHPを20回復する。' },
       { id: 't_x_speed', name: 'スピーダー', category: 'Trainer', subType: 'Item', type: 'Trainer', rarity: 'C', pack: 'a1_charizard', text: 'この番、バトルポケモンの「にげる」ためのエネルギーが1個少なくなる。' },
-      { id: 't_sabrina', name: 'ナツメ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SR', pack: 'a1_charizard', text: '相手のベンチポケモンを1匹選び、バトルポケモンと入れ替える。' },
+      { id: 't_sabrina', name: 'ナツメ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SR', pack: 'a1_charizard', text: '相手のバトルポケモンをベンチと入れ替える。入れ替え先は相手が選ぶ。' },
       { id: 't_giovanni', name: 'サカキ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SR', pack: 'a1_mewtwo', text: 'この番、自分のポケモンが使うワザのダメージを+10する。' },
       { id: 't_misty', name: 'カスミ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SAR', pack: 'a1_pikachu', text: '自分の水ポケモン1匹にウラが出るまでコインを投げ、オモテの数ぶん水エネルギーをつける！' },
       { id: 't_erika', name: 'エリカ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SR', pack: 'a1_charizard', text: '自分の草ポケモン1匹のHPを50回復する。' },
@@ -7134,6 +7134,7 @@ const PACK_CATALOG_DATA = {
       resolvingAttackSide: null, sessionId: 0,
       pendingRareCandy: false, pendingGenomeAttack: null,
       pendingAttackChoice: null, pendingRetreat: null,
+      pendingGustChoice: null, pendingRemoteChoice: null, remoteChoiceTimer: null,
       emoteTimer: null, cutinTimer: null,
 
       shuffle(arr) {
@@ -7262,6 +7263,7 @@ const PACK_CATALOG_DATA = {
         this.pendingPromotionNext = null; this.pendingRemotePassTurn = false;
         this.resolvingAttackSide = null; this.pendingRareCandy = false; this.pendingGenomeAttack = null;
         this.pendingAttackChoice = null; this.pendingRetreat = null;
+        this.pendingGustChoice = null; this.pendingRemoteChoice = null; clearTimeout(this.remoteChoiceTimer);
         this.mode = cfg.mode || 'cpu';
         this.isOnlineP2P = !!cfg.isOnlineP2P;
         this.oppRating = cfg.oppRating || 1000;
@@ -7460,15 +7462,17 @@ const PACK_CATALOG_DATA = {
         } catch (e) { ui.toast('対戦相手への状態同期に失敗しました'); }
       },
 
-      sendBoardAck() {
+      sendBoardAck(extra = {}) {
         if (!this.isOnlineP2P || !onlineLobby.conn || this.phase !== 'play') return;
         try {
-          onlineLobby.conn.send({ type: 'BOARD_ACK', senderRevision: this.localBoardRevision, senderBoard: this.getLocalBoardSnapshot() });
+          onlineLobby.conn.send({ type: 'BOARD_ACK', senderRevision: this.localBoardRevision, senderBoard: this.getLocalBoardSnapshot(), ...extra });
         } catch (e) { ui.toast('盤面確認の同期に失敗しました'); }
       },
 
       receiveRemoteBoardAck(msg) {
-        if (!this.isOnlineP2P || this.over || !msg?.senderBoard) return;
+        if (!this.isOnlineP2P || this.over || !msg) return;
+        if (msg.effectDone === 'sabrina' && this.pendingRemoteChoice === 'sabrina') this.endRemoteChoiceWait();
+        if (!msg.senderBoard) { this.render(); return; }
         const rev = Number(msg.senderRevision);
         if (!Number.isFinite(rev) || rev < this.remoteBoardRevision) return;
         if (!this.applyRemoteSenderBoard(msg.senderBoard)) {
@@ -7489,6 +7493,19 @@ const PACK_CATALOG_DATA = {
           this.log('相手のレッドカード！手札を山札に戻して3枚引きました。');
           this.render();
           this.sendBoardAck();
+        } else if (msg.effect === 'sabrina') {
+          if (!this.p.active || this.p.bench.length === 0) { this.localBoardRevision++; this.sendBoardAck({ effectDone: 'sabrina' }); return; }
+          this.log('相手のナツメ！バトル場に出すポケモンを選んでください。');
+          if (this.p.bench.length === 1) {
+            this.resolveSabrina('player', 0);
+            this.localBoardRevision++;
+            this.sendBoardAck({ effectDone: 'sabrina' });
+            return;
+          }
+          this.pendingGustChoice = { session: this.sessionId, online: true };
+          this.actionLocked = true;
+          this.render();
+          this.openSabrinaChoice();
         }
       },
 
@@ -7938,12 +7955,29 @@ const PACK_CATALOG_DATA = {
         else if (c.id === 't_giovanni') { s.dmgBonus += 10; this.showCutin('SUPPORTER', 'サカキ：ワザダメージ +10！'); this.log('サカキ！この番のワザのダメージ+10！'); }
         else if (c.id === 't_sabrina') {
           if (opp.bench.length > 0 && opp.active) {
-            if (side === 'player' && opp.bench.length > 1) {
-              const html = opp.bench.map((b, bi) => `<div onclick="battle.resolveSabrina('player',${bi});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-purple-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${b.hp}/${b.maxHp}</span></div>`).join('');
-              ui.openSelectModal('ナツメ：バトル場に出す相手のベンチを選択', html, false);
+            this.showCutin('SUPPORTER', 'ナツメ：バトルポケモン交代！');
+            this.log('ナツメ！相手のバトルポケモンをベンチと入れ替える！');
+            if (side === 'player' && this.isOnlineP2P) {
+              // The opponent's client picks its own new Active; wait for its answer.
+              this.render();
+              this.syncToPeer(false);
+              try {
+                onlineLobby.conn?.send({ type: 'REMOTE_EFFECT', effect: 'sabrina' });
+                this.beginRemoteChoiceWait('sabrina');
+              } catch (e) { ui.toast('ナツメの効果送信に失敗しました'); }
               return;
             }
-            this.resolveSabrina(side, side === 'player' ? 0 : this.chooseGustIndex(side));
+            if (side === 'player') {
+              // vs CPU: the CPU chooses its own replacement.
+              this.resolveSabrina('opp', this.chooseOwnActiveIndex('opp'));
+              return;
+            }
+            // CPU used it on the player: the player chooses (automatic if there is only one benched Pokemon).
+            if (this.p.bench.length === 1) { this.resolveSabrina('player', 0); return; }
+            this.pendingGustChoice = { session: this.sessionId, online: false };
+            this.actionLocked = true;
+            this.render();
+            this.openSabrinaChoice();
             return;
           } else this.log('ナツメを使ったが相手ベンチがいなかった');
         }
@@ -7987,16 +8021,71 @@ const PACK_CATALOG_DATA = {
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
-      resolveSabrina(side, benchIndex) {
-        const opp = side === 'player' ? this.o : this.p;
-        const target = opp.bench[benchIndex];
-        if (!target || !opp.active) { this.render(); return; }
-        const old = opp.active;
-        opp.active = target; opp.bench[benchIndex] = old;
-        this.showCutin('SUPPORTER', 'ナツメ：バトルポケモン交代！');
-        this.log(`ナツメの効果で相手の${CARD_MAP[target.cardId].name}をバトル場に出した！`);
+      // victimSide's Active goes to the Bench and bench[benchIndex] takes its place (same slot).
+      resolveSabrina(victimSide, benchIndex) {
+        const victim = victimSide === 'player' ? this.p : this.o;
+        const target = victim.bench[benchIndex];
+        if (!target || !victim.active) { this.render(); return false; }
+        const old = victim.active;
+        victim.active = target; victim.bench[benchIndex] = old;
+        this.log(`${victimSide === 'player' ? 'あなた' : '相手'}は${CARD_MAP[target.cardId].name}をバトル場に出した！`);
         this.render();
-        if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
+        return true;
+      },
+
+      // CPU picks its own new Active after being switched out: strongest follow-up attacker, with sturdiness as a tie-break.
+      chooseOwnActiveIndex(side) {
+        const s = side === 'player' ? this.p : this.o, foe = side === 'player' ? this.o : this.p;
+        let best = 0, bestScore = -Infinity;
+        s.bench.forEach((b, bi) => {
+          const c = CARD_MAP[b.cardId];
+          let score = b.hp * 0.2 + b.energies.length * 8;
+          const ready = (c.attacks || []).filter(a => this.canPay(b, a.cost));
+          if (foe.active && ready.length) {
+            const dmg = Math.max(...ready.map(a => this.calcDamagePreview(b, a, foe.active, side).final));
+            score += dmg;
+            if (dmg >= foe.active.hp) score += 500;
+          }
+          if (score > bestScore) { bestScore = score; best = bi; }
+        });
+        return best;
+      },
+
+      openSabrinaChoice() {
+        const html = this.p.bench.map((b, bi) => `<div onclick="battle.chooseSabrina(${bi});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${b.hp}/${b.maxHp}・エネ${b.energies.length}</span></div>`).join('');
+        ui.openSelectModal('ナツメ！バトル場に出すポケモンを選択（必須）', html, false);
+      },
+
+      chooseSabrina(benchIndex) {
+        const pend = this.pendingGustChoice;
+        if (!pend || pend.session !== this.sessionId) return;
+        this.pendingGustChoice = null;
+        this.actionLocked = false;
+        this.resolveSabrina('player', benchIndex);
+        if (pend.online) {
+          this.localBoardRevision++;
+          this.sendBoardAck({ effectDone: 'sabrina' });
+        }
+      },
+
+      // Sender side of "the opponent has to choose": keep input locked until their answer arrives.
+      beginRemoteChoiceWait(kind) {
+        this.pendingRemoteChoice = kind;
+        this.actionLocked = true;
+        clearTimeout(this.remoteChoiceTimer);
+        const sess = this.sessionId;
+        this.remoteChoiceTimer = setTimeout(() => {
+          if (sess !== this.sessionId || !this.pendingRemoteChoice) return;
+          this.endRemoteChoiceWait();
+          ui.toast('相手の応答がありません。操作を再開します');
+          this.render();
+        }, 60000);
+      },
+
+      endRemoteChoiceWait() {
+        clearTimeout(this.remoteChoiceTimer);
+        this.pendingRemoteChoice = null;
+        this.actionLocked = false;
       },
 
       // CPU helper: which of the opponent's benched Pokemon to pull up (prefers one we can KO, else the weakest)
@@ -8596,6 +8685,8 @@ const PACK_CATALOG_DATA = {
         const supIdx = o.hand.findIndex(id => CARD_MAP[id]?.subType === 'Supporter');
         if (difficulty !== 'easy' && supIdx !== -1 && this.canUseSupporter('opp')) this.execTrainer('opp', supIdx);
 
+        const finishTurn = () => {
+        if (scheduledSession !== this.sessionId || this.over || this.currentSide !== 'opp' || this.isOnlineP2P) return;
         if (difficulty !== 'easy') {
           [o.active, ...o.bench].filter(Boolean).forEach((inst, idx) => {
             if (CARD_MAP[inst.cardId]?.ability && !CARD_MAP[inst.cardId].ability.passive && !inst.abilityUsed) this.useAbility('opp', idx === 0 ? 'active' : 'bench', idx === 0 ? 0 : idx - 1);
@@ -8645,6 +8736,15 @@ const PACK_CATALOG_DATA = {
             this.startTurn('player');
           }
         }, difficulty === 'hard' ? 500 : 650);
+        };
+        if (this.pendingGustChoice) {
+          const waitForChoice = () => {
+            if (scheduledSession !== this.sessionId || this.over) return;
+            if (this.pendingGustChoice) { setTimeout(waitForChoice, 250); return; }
+            finishTurn();
+          };
+          setTimeout(waitForChoice, 250);
+        } else finishTurn();
       },
       inspectFieldPokemon(side, z, i) {
         if (this.phase === 'setup' && side === 'opp') {
@@ -8709,6 +8809,7 @@ const PACK_CATALOG_DATA = {
         this.sessionId++;
         this.actionLocked = false; this.pendingRareCandy = false; this.pendingGenomeAttack = null;
         this.pendingAttackChoice = null; this.pendingRetreat = null;
+        this.pendingGustChoice = null; this.pendingRemoteChoice = null; clearTimeout(this.remoteChoiceTimer);
         this.pendingSelfKO = false; this.pendingPromotionNext = null; this.pendingRemotePassTurn = false;
         this.promotionModalOpen = false;
         document.getElementById('modal-select')?.classList.add('hidden');
@@ -8890,6 +8991,7 @@ const PACK_CATALOG_DATA = {
             battle.sessionId++; battle.actionLocked = false;
             battle.pendingRareCandy = false; battle.pendingGenomeAttack = null;
             battle.pendingAttackChoice = null; battle.pendingRetreat = null;
+            battle.pendingGustChoice = null; battle.pendingRemoteChoice = null; clearTimeout(battle.remoteChoiceTimer);
             battle.pendingSelfKO = false; battle.pendingPromotionNext = null;
             battle.pendingRemotePassTurn = false; battle.promotionModalOpen = false;
           }
