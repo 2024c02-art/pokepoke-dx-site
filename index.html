@@ -7131,7 +7131,7 @@ const PACK_CATALOG_DATA = {
         const issues = this.getOwnershipIssues(cards);
         if (issues.length) {
           const first = issues[0];
-          ui.toast(`スターターを読み込めません：${CARD_MAP[first.id]?.name || first.id} は所持${first.owned}枚 / 必要${first.count}枚です`);
+          ui.toast(`スターターを読み込めません：${getCardDisplayName(CARD_MAP[first.id])} は所持${first.owned}枚 / 必要${first.count}枚です`);
           document.getElementById('preset-deck-select').value = '';
           return;
         }
@@ -7161,7 +7161,7 @@ const PACK_CATALOG_DATA = {
         accountMgr.data.packPoints -= cost;
         accountMgr.data.collection[id] = (accountMgr.data.collection[id] || 0) + 1;
         accountMgr.saveCurrent(); sound.energy();
-        ui.toast(`「${c.name}」を交換しました！`); this.render();
+        ui.toast(`「${getCardDisplayName(c)}」を交換しました！`); this.render();
       },
 
       saveDeck() {
@@ -7170,7 +7170,7 @@ const PACK_CATALOG_DATA = {
         const ownershipIssues = this.getOwnershipIssues(this.tempDeck);
         if (ownershipIssues.length) {
           const first = ownershipIssues[0];
-          ui.toast(`所持枚数不足：${CARD_MAP[first.id]?.name || first.id}（所持${first.owned}枚 / 必要${first.count}枚）`);
+          ui.toast(`所持枚数不足：${getCardDisplayName(CARD_MAP[first.id])}（所持${first.owned}枚 / 必要${first.count}枚）`);
           return;
         }
         if (!this.tempDeck.some(id => CARD_MAP[id].category === 'Pokemon' && CARD_MAP[id].stage === 'Basic')) {
@@ -7236,7 +7236,7 @@ const PACK_CATALOG_DATA = {
           const issues = this.getOwnershipIssues(payload.cards);
           if (issues.length) {
             const first = issues[0];
-            ui.toast(`読み込めません：${CARD_MAP[first.id]?.name || first.id} が不足しています（所持${first.owned}枚 / 必要${first.count}枚）`);
+            ui.toast(`読み込めません：${getCardDisplayName(CARD_MAP[first.id])} が不足しています（所持${first.owned}枚 / 必要${first.count}枚）`);
             return;
           }
           const name = typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim().slice(0, 50) : '共有デッキ';
@@ -7312,7 +7312,7 @@ const PACK_CATALOG_DATA = {
         }).join('');
 
         const q = (document.getElementById('deck-search')?.value || '').trim().toLowerCase();
-        const filtered = CARDS.filter(c => (this.viewMode === 'dex' || !c.collectionOnly) && (this.filter === 'ALL' || c.category === this.filter) && (!q || `${c.name} ${c.text || ''} ${c.ability?.name || ''}`.toLowerCase().includes(q)));
+        const filtered = CARDS.filter(c => (this.viewMode === 'dex' || !c.collectionOnly) && (this.filter === 'ALL' || c.category === this.filter) && (!q || `${getCardDisplayName(c)} ${c.jpName||''}`.toLowerCase().includes(q)));
         const visibleCards = this.viewMode === 'dex' ? filtered.slice(0, this.dexLimit) : filtered;
         const costMap = { C: 35, U: 70, R: 150, RR: 250, SR: 400, SAR: 600, UR: 800, AR: 100, S: 100, SSR: 100, IM: 100 };
 
@@ -7337,7 +7337,7 @@ const PACK_CATALOG_DATA = {
 
         document.getElementById('current-deck-list').innerHTML = Object.entries(counts).map(([id, cnt]) => {
           const c = CARD_MAP[id];
-          return `<div class="py-1.5 px-2 flex items-center justify-between text-xs hover:bg-white rounded-xl"><div class="flex items-center gap-2 truncate cursor-pointer" onclick="ui.openCardModal(CARD_MAP['${id}'])">${renderTypeBadgeSvg(c.type, 15)}<span class="font-extrabold truncate">${c.name}</span></div><div class="flex items-center gap-1.5 shrink-0"><span class="font-black text-sky-700">×${cnt}</span><button onclick="deckBuilder.removeCard('${id}')" class="w-5 h-5 rounded bg-slate-200 font-black">-</button><button onclick="deckBuilder.addCard('${id}')" class="w-5 h-5 rounded bg-emerald-500 text-white font-black">+</button></div></div>`;
+          return `<div class="py-1.5 px-2 flex items-center justify-between text-xs hover:bg-white rounded-xl"><div class="flex items-center gap-2 truncate cursor-pointer" onclick="ui.openCardModal(CARD_MAP['${id}'])">${renderTypeBadgeSvg(c.type, 15)}<span class="font-extrabold truncate">${escapeHtml(getCardDisplayName(c))}</span></div><div class="flex items-center gap-1.5 shrink-0"><span class="font-black text-sky-700">×${cnt}</span><button onclick="deckBuilder.removeCard('${id}')" class="w-5 h-5 rounded bg-slate-200 font-black">-</button><button onclick="deckBuilder.addCard('${id}')" class="w-5 h-5 rounded bg-emerald-500 text-white font-black">+</button></div></div>`;
         }).join('') || '<div class="text-xs text-slate-400 text-center py-8 font-bold">カードを追加してください</div>';
       }
     };
@@ -7956,7 +7956,7 @@ const PACK_CATALOG_DATA = {
         }
         const targets = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))].filter(t => t.inst);
         const eType = this.p.currentEnergy;
-        ui.openSelectModal(`${TYPE_META[eType].code}エネルギーをつけるポケモンを選択`, targets.map(t => `<div onclick="battle.assignZoneEnergy('${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-sky-700 mt-1">${CARD_MAP[t.inst.cardId].name}</span></div>`).join(''));
+        ui.openSelectModal(`${TYPE_META[eType].code}エネルギーをつけるポケモンを選択`, targets.map(t => `<div onclick="battle.assignZoneEnergy('${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-sky-700 mt-1">${escapeHtml(getCardDisplayName(CARD_MAP[t.inst.cardId]))}</span></div>`).join(''));
       },
 
       assignZoneEnergy(z, i) {
@@ -7972,7 +7972,7 @@ const PACK_CATALOG_DATA = {
         sound.energy();
         battleVfx.triggerBurst('player', TYPE_META[eType].c1, '#fde047');
 
-        this.log(`${CARD_MAP[t.cardId].name}に${TYPE_META[eType].code}エネルギーをつけた！`);
+        this.log(`${getCardDisplayName(CARD_MAP[t.cardId])}に${TYPE_META[eType].code}エネルギーをつけた！`);
         if (this.nightmareAura('player', t, eType)) {
           this.render();
           if (this.isOnlineP2P) this.syncToPeer(false);
@@ -8034,10 +8034,10 @@ const PACK_CATALOG_DATA = {
           if (c.category !== 'Pokemon' || c.stage !== 'Basic') { ui.toast('バトル開始前は「たねポケモン」のみ配置できます！'); return; }
           if (!this.p.active) {
             this.p.hand.splice(idx, 1); this.p.active = this.createInst(id, 0); sound.draw();
-            this.log(`バトル場に「${c.name}」を伏せて配置しました！`);
+            this.log(`バトル場に「${getCardDisplayName(c)}」を伏せて配置しました！`);
           } else if (this.p.bench.length < 3) {
             this.p.hand.splice(idx, 1); this.p.bench.push(this.createInst(id, 0)); sound.draw();
-            this.log(`ベンチに「${c.name}」を伏せて配置しました！`);
+            this.log(`ベンチに「${getCardDisplayName(c)}」を伏せて配置しました！`);
           } else ui.toast('ベンチは最大3枠までです');
           this.render(); return;
         }
@@ -8049,13 +8049,13 @@ const PACK_CATALOG_DATA = {
             if (this.p.bench.length >= 3) { ui.toast('ベンチは最大3枠までです'); return; }
             this.p.hand.splice(idx, 1); this.p.bench.push(this.createInst(id, this.turn));
             sound.draw(); battleVfx.triggerBurst('player');
-            this.log(`${c.name}をベンチに出した！`); this.render();
+            this.log(`${getCardDisplayName(c)}をベンチに出した！`); this.render();
             if (this.isOnlineP2P) this.syncToPeer(false);
           } else {
             if (!this.canEvolveNow('player')) { ui.toast('最初のターンは進化できません'); return; }
             const cands = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))].filter(t => t.inst && CARD_MAP[t.inst.cardId].name === c.evolvesFrom && t.inst.turnPlayed < this.turn);
             if (cands.length === 0) { ui.toast(`進化元「${c.evolvesFrom}」が場にいないか出したばかりです`); return; }
-            ui.openSelectModal(`${c.name} に進化するポケモンを選択`, cands.map(t => `<div onclick="battle.evolve(${idx},'${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-emerald-700 mt-1">進化する</span></div>`).join(''));
+            ui.openSelectModal(`${getCardDisplayName(c)} に進化するポケモンを選択`, cands.map(t => `<div onclick="battle.evolve(${idx},'${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-emerald-700 mt-1">進化する</span></div>`).join(''));
           }
           return;
         }
@@ -8086,8 +8086,8 @@ const PACK_CATALOG_DATA = {
         t.under = [...(t.under || []), t.cardId]; t.cardId = evoId; t.maxHp = evoC.hp; t.hp = Math.max(10, evoC.hp - dmg); t.turnPlayed = this.turn; t.abilityUsed = false;
         t.status = null; t.statusEffects = []; t.temporaryFlags = {};
         sound.rarePull(); battleVfx.triggerBurst(side, '#0ea5e9', '#a855f7');
-        this.showCutin('EVOLUTION!', `${evoC.name} に進化！`);
-        this.log(`${evoC.name}に進化した！`);
+        this.showCutin('進化！', `${getCardDisplayName(evoC)} に進化！`);
+        this.log(`${getCardDisplayName(evoC)}に進化した！`);
         if (!deferRenderAndSync) {
           this.render();
           if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
@@ -8167,7 +8167,7 @@ const PACK_CATALOG_DATA = {
         if (!currentTarget || currentTarget !== target) { this.render(); return; }
         for (let n = 0; n < heads; n++) currentTarget.energies.push('Water');
         if (heads) sound.energy();
-        this.log(`カスミのコイントス！オモテ${heads}回で${CARD_MAP[currentTarget.cardId].name}に水エネルギーを${heads}個つけた！`);
+        this.log(`カスミのコイントス！オモテ${heads}回で${getCardDisplayName(CARD_MAP[currentTarget.cardId])}に水エネルギーを${heads}個つけた！`);
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
@@ -8177,7 +8177,7 @@ const PACK_CATALOG_DATA = {
         const target = z === 'active' ? board.active : board.bench[i];
         if (!target || CARD_MAP[target.cardId]?.type !== 'Grass') return;
         target.hp = Math.min(target.maxHp, target.hp + 50);
-        this.log(`エリカの効果で${CARD_MAP[target.cardId].name}のHPを50回復！`);
+        this.log(`エリカの効果で${getCardDisplayName(CARD_MAP[target.cardId])}のHPを50回復！`);
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
@@ -8201,7 +8201,7 @@ const PACK_CATALOG_DATA = {
           }
           if (side === 'player') {
             this.pendingRareCandy = true; this.actionLocked = true;
-            const html = opts.map(o => `<div onclick="battle.resolveRareCandy('player','${o.evoCardId}','${o.z}',${o.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(o.evoCardId)}<span class="text-xs font-black text-emerald-700 mt-1">${CARD_MAP[o.baseId].name}から進化</span></div>`).join('');
+            const html = opts.map(o => `<div onclick="battle.resolveRareCandy('player','${o.evoCardId}','${o.z}',${o.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(o.evoCardId)}<span class="text-xs font-black text-emerald-700 mt-1">${escapeHtml(getCardDisplayName(CARD_MAP[o.baseId]))}から進化</span></div>`).join('');
             this.render();
             ui.openSelectModal('ふしぎなアメ：進化させるポケモンを選択', html, true);
           } else {
@@ -8317,7 +8317,7 @@ const PACK_CATALOG_DATA = {
         if (!target || !victim.active) { this.render(); return false; }
         const old = victim.active;
         victim.active = target; victim.bench[benchIndex] = old;
-        this.log(`${victimSide === 'player' ? 'あなた' : '相手'}は${CARD_MAP[target.cardId].name}をバトル場に出した！`);
+        this.log(`${victimSide === 'player' ? 'あなた' : '相手'}は${getCardDisplayName(CARD_MAP[target.cardId])}をバトル場に出した！`);
         this.render();
         return true;
       },
@@ -8412,7 +8412,7 @@ const PACK_CATALOG_DATA = {
         t.hp = Math.min(t.maxHp, t.hp + amount);
         sound.energy();
         battleVfx.triggerBurst(side, '#22c55e', '#fde047');
-        this.log(`${CARD_MAP[t.cardId].name}のHPを${amount}回復した！`);
+        this.log(`${getCardDisplayName(CARD_MAP[t.cardId])}のHPを${amount}回復した！`);
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
@@ -8460,7 +8460,7 @@ const PACK_CATALOG_DATA = {
         source.abilityUsed = true;
         target.energies.push('Fire');
         sound.energy();
-        this.log(`ファイヤーexの「れっかのまい」！${CARD_MAP[target.cardId].name}に炎エネルギー+1！`);
+        this.log(`ファイヤーexの「れっかのまい」！${getCardDisplayName(CARD_MAP[target.cardId])}に炎エネルギー+1！`);
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
@@ -8475,7 +8475,7 @@ const PACK_CATALOG_DATA = {
         board.deck.splice(deckIndex, 1);
         board.deck = this.shuffle(board.deck);
         board.bench.push(this.createInst(cardId, this.turn));
-        this.log(`ミライドンexの「タンデムユニット」！${CARD_MAP[cardId].name}をベンチに出した！`);
+        this.log(`ミライドンexの「タンデムユニット」！${getCardDisplayName(CARD_MAP[cardId])}をベンチに出した！`);
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
@@ -8490,7 +8490,7 @@ const PACK_CATALOG_DATA = {
         const old = opp.active;
         opp.active = target;
         opp.bench[benchIndex] = old;
-        this.log(`ブラッキーexの「ダークシグナル」！${CARD_MAP[target.cardId].name}をバトル場に呼び出した！`);
+        this.log(`ブラッキーexの「ダークシグナル」！${getCardDisplayName(CARD_MAP[target.cardId])}をバトル場に呼び出した！`);
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
@@ -8577,7 +8577,7 @@ const PACK_CATALOG_DATA = {
           this.log(`ビーダルの「はたらくまえば」で${need}枚引いた！`);
         } else {
           this.drawCards(side, 1);
-          this.log(`${c.name}の特性「${c.ability.name}」で山札を1枚引いた！`);
+          this.log(`${getCardDisplayName(c)}の特性で山札を1枚引いた！`);
         }
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
@@ -8592,7 +8592,7 @@ const PACK_CATALOG_DATA = {
         const oppSide = side === 'player' ? 'opp' : 'player';
         target.hp -= 20;
         this.showDmg(tz === 'active' ? `${oppSide}-active` : `${oppSide}-bench`, 20);
-        this.log(`ゲッコウガexの「みずしゅりけん」！相手の${CARD_MAP[target.cardId].name}に20ダメージ！`);
+        this.log(`ゲッコウガexの「みずしゅりけん」！相手の${getCardDisplayName(CARD_MAP[target.cardId])}に20ダメージ！`);
         const wasKO = this.checkKO(oppSide, tz, ti, tz === 'bench');
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
@@ -8670,7 +8670,7 @@ const PACK_CATALOG_DATA = {
             this.actionLocked = true;
             const html = list.map((b, bi) => `<div onclick="battle.resolveAttackChoice(${bi});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${b.hp}/${b.maxHp}・エネ${b.energies.length}</span></div>`).join('');
             this.render();
-            ui.openSelectModal(pickKind === 'oppBench' ? `${atk.name}：${atk.fx === 'bench_snipe30' ? 30 : genericBenchDamage}ダメージを与える相手のベンチを選択` : `${atk.name}：鋼エネルギーを2個つけるベンチを選択`, html, true);
+            const attackLabel=getCardDisplayAttackName(CARD_MAP[s.active.cardId],atk,isGenomeHack?copiedAttackIdx:atkIdx); ui.openSelectModal(pickKind === 'oppBench' ? `${attackLabel}：${atk.fx === 'bench_snipe30' ? 30 : genericBenchDamage}ダメージを与える相手のベンチを選択` : `${attackLabel}：鋼エネルギーを2個つけるベンチを選択`, html, true);
             return;
           } else if (pickKind === 'oppBench') {
             choice = { bench: this.chooseSnipeTarget(side, atk.fx === 'bench_snipe30' ? 30 : genericBenchDamage, false)?.i ?? -1 };
@@ -8693,7 +8693,7 @@ const PACK_CATALOG_DATA = {
         }
         if (atk.fx === 'metal_turbo' && choice && choice.bench >= 0 && s.bench[choice.bench]) {
           s.bench[choice.bench].energies.push('Metal', 'Metal');
-          this.log(`${CARD_MAP[s.bench[choice.bench].cardId].name}に鋼エネルギーを2個つけた！`);
+          this.log(`${getCardDisplayName(CARD_MAP[s.bench[choice.bench].cardId])}に鋼エネルギーを2個つけた！`);
         }
         if (atk.fx === 'heal30') s.active.hp = Math.min(s.active.maxHp, s.active.hp + 30);
         if (atk.fx === 'heal20') s.active.hp = Math.min(s.active.maxHp, s.active.hp + 20);
@@ -8702,7 +8702,7 @@ const PACK_CATALOG_DATA = {
         if(ge.discardEnergy){
           const energyType=ge.energyType||null;
           for(let n=0;n<Number(ge.discardEnergy);n++){const idx=energyType?s.active.energies.indexOf(energyType):s.active.energies.length-1;if(idx<0)break;s.active.energies.splice(idx,1);}
-          this.log(`${attC.name}のワザ効果：エネルギーを${Number(ge.discardEnergy)}個トラッシュ。`);
+          this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーを${Number(ge.discardEnergy)}個トラッシュ。`);
         }
         const selfDamageAttack = atk.fx === 'selfdmg30' || Number(ge.selfDamage||0)>0;
         if (selfDamageAttack) s.active.hp -= atk.fx === 'selfdmg30' ? 30 : Number(ge.selfDamage||0);
@@ -8717,7 +8717,7 @@ const PACK_CATALOG_DATA = {
         const defendingCardName = CARD_MAP[opp.active.cardId].name;
         opp.active.hp -= dmg;
         this.showDmg(side === 'player' ? 'opp-active' : 'player-active', dmg, prev.isWeak);
-        this.log(`${attC.name}の「${isGenomeHack ? 'ゲノムハック（' + atk.name + '）' : atk.name}」！${defendingCardName}に${dmg}ダメージ！${prev.isWeak ? '（弱点+20！）' : ''}`);
+        this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に${dmg}ダメージ！${prev.isWeak ? '（弱点+20！）' : ''}`);
 
         if (atk.fx === 'bench_all20' && opp.bench.length) {
           opp.bench.forEach(b => { b.hp -= 20; });
@@ -8725,10 +8725,10 @@ const PACK_CATALOG_DATA = {
         }
         if (atk.fx === 'bench_snipe30' && choice && choice.bench >= 0 && opp.bench[choice.bench]) {
           opp.bench[choice.bench].hp -= 30;
-          this.log(`相手の${CARD_MAP[opp.bench[choice.bench].cardId].name}にも30ダメージ！`);
+          this.log(`相手の${getCardDisplayName(CARD_MAP[opp.bench[choice.bench].cardId])}にも30ダメージ！`);
         } else if(genericBenchDamage>0 && choice && choice.bench>=0 && opp.bench[choice.bench]){
           opp.bench[choice.bench].hp-=genericBenchDamage;
-          this.log(`相手の${CARD_MAP[opp.bench[choice.bench].cardId].name}にも${genericBenchDamage}ダメージ！`);
+          this.log(`相手の${getCardDisplayName(CARD_MAP[opp.bench[choice.bench].cardId])}にも${genericBenchDamage}ダメージ！`);
         }
         if(genericBenchAllDamage>0 && opp.bench.length){ opp.bench.forEach(b=>{b.hp-=genericBenchAllDamage;}); this.log(`相手のベンチ全員にも${genericBenchAllDamage}ダメージ！`); }
 
@@ -8784,7 +8784,7 @@ const PACK_CATALOG_DATA = {
         const pts = c.pointValue || (c.isEx ? 2 : 1);
         def.discard.push(...(inst.under || []), inst.cardId);
         att.points = Math.min(3, att.points + pts);
-        this.log(`${c.name}はきぜつ！（${att.name}に ${pts}ポイント！）`);
+        this.log(`${getCardDisplayName(c)}はきぜつ！（${att.name}に ${pts}ポイント！）`);
 
         if (isBench) {
           def.bench.splice(i, 1);
@@ -8814,7 +8814,7 @@ const PACK_CATALOG_DATA = {
         } else if (!this.isOnlineP2P) {
           // CPU's board is controlled locally; select its replacement automatically.
           def.active = def.bench.shift();
-          this.log(`相手は${CARD_MAP[def.active.cardId].name}をバトル場に出した！`);
+          this.log(`相手は${getCardDisplayName(CARD_MAP[def.active.cardId])}をバトル場に出した！`);
         }
         // In P2P the defender's client chooses its own replacement after receiving receiverBoard.active=null.
         return true;
@@ -8826,7 +8826,7 @@ const PACK_CATALOG_DATA = {
         if (side === 'player') {
           this.promotionModalOpen = false; this.pendingSelfKO = false; this.actionLocked = false;
         }
-        this.log(`${CARD_MAP[s.active.cardId].name}をバトル場に出した！`);
+        this.log(`${getCardDisplayName(CARD_MAP[s.active.cardId])}をバトル場に出した！`);
         const pending = side === 'player' ? this.pendingPromotionNext : null;
         if (side === 'player') this.pendingPromotionNext = null;
         this.render();
@@ -8913,7 +8913,7 @@ const PACK_CATALOG_DATA = {
         else this.p.active.energies.splice(0, cost);
         const old = this.p.active; this.p.active = this.p.bench.splice(bi, 1)[0]; this.p.bench.push(old);
         this.p.retreated = true; sound.draw();
-        this.log(`${CARD_MAP[this.p.active.cardId].name}に交代した！`);
+        this.log(`${getCardDisplayName(CARD_MAP[this.p.active.cardId])}に交代した！`);
         this.render();
         if (this.isOnlineP2P) this.syncToPeer(false);
       },
@@ -8974,7 +8974,7 @@ const PACK_CATALOG_DATA = {
           const attachedType = o.currentEnergy;
           energyTarget.energies.push(attachedType);
           this.log(difficulty === 'expert' && energyTarget !== o.active
-            ? `CPUは次の攻撃に備えて${CARD_MAP[energyTarget.cardId].name}にエネルギーをつけた！`
+            ? `CPUは次の攻撃に備えて${getCardDisplayName(CARD_MAP[energyTarget.cardId])}にエネルギーをつけた！`
             : 'CPUはバトルポケモンにエネルギーをつけた！');
           o.currentEnergy = null;
           this.nightmareAura('opp', energyTarget, attachedType);
@@ -9187,7 +9187,7 @@ const PACK_CATALOG_DATA = {
           <div ${dropAttr} onclick="battle.inspectFieldPokemon('${side}','${z}',${i})" class="pk-card border-${c.rarity} card-bg-${c.type} ${canAtk ? 'playable-glow' : ''} ${dropHighlight} ${isActive ? 'w-28 h-36 sm:w-32 sm:h-40 p-2' : 'w-20 h-28 sm:w-24 sm:h-32 p-1.5'} flex flex-col justify-between cursor-pointer relative">
             ${this.phase === 'setup' && side === 'player' ? '<div class="absolute inset-0 bg-indigo-950/65 z-20 flex items-center justify-center text-white text-[10px] font-black rounded-xl pointer-events-none">裏向き準備OK</div>' : ''}
             <div class="battle-card-title flex justify-between items-center text-[9px] font-black bg-white/95 rounded-lg px-1.5 py-1 text-slate-900 gap-1">
-              <span class="truncate">${c.name}</span><span class="text-rose-600 ml-0.5 shrink-0">${inst.hp}<span class="text-slate-400">/${inst.maxHp}</span></span>
+              <span class="truncate">${escapeHtml(getCardDisplayName(c))}</span><span class="text-rose-600 ml-0.5 shrink-0">${inst.hp}<span class="text-slate-400">/${inst.maxHp}</span></span>
             </div>
             <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden my-0.5">
               <div class="${pct > 50 ? 'bg-emerald-500' : pct > 25 ? 'bg-amber-400' : 'bg-rose-500'} h-full" style="width:${pct}%"></div>
