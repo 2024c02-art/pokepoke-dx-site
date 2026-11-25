@@ -8246,7 +8246,7 @@ const PACK_CATALOG_DATA = {
           if (bIdx !== -1 && s.hand.length < 10) {
             const fId = s.deck.splice(bIdx, 1)[0]; s.hand.push(fId);
             s.deck = this.shuffle(s.deck);
-            this.log(`モンスターボールで${side === 'player' ? CARD_MAP[fId].name : 'たねポケモン'}を手札に加えた！`);
+            this.log(`モンスターボールで${side === 'player' ? getCardDisplayName(CARD_MAP[fId]) : 'たねポケモン'}を手札に加えた！`);
           } else this.log('モンスターボールを使ったが対象がいなかった');
         }
         else if (c.id === 't_potion') {
@@ -8739,7 +8739,7 @@ const PACK_CATALOG_DATA = {
         battleVfx.triggerAttackVfx(side, attC.type, dmg >= 100);
         prev.isWeak ? sound.superEffective() : sound.attack();
 
-        const defendingCardName = CARD_MAP[opp.active.cardId].name;
+        const defendingCardName = getCardDisplayName(CARD_MAP[opp.active.cardId]);
         opp.active.hp -= dmg;
         this.showDmg(side === 'player' ? 'opp-active' : 'player-active', dmg, prev.isWeak);
         this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に${dmg}ダメージ！${prev.isWeak ? '（弱点+20！）' : ''}`);
