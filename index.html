@@ -6782,8 +6782,14 @@ const PACK_CATALOG_DATA = {
             if(card){card.jpName=record.name;card.jpDetail=JAPANESE_CARD_DETAILS[record.key]||card.jpDetail||null;card.setCode=record.sourceSet;card.collectorNumber=record.number;card.catalogKey=record.key;}
             if(col){
               const mapped=this.rarityCode(col);
-              if(mapped){record.rarity=mapped; if(card){card.rarity=mapped;card.catalogRarity=mapped;card.rarityEstimated=false;}}
-              record.rarityEstimated=!mapped;
+              const ambiguousRarity=String(col.rarity||'')==='☆☆'&&!col.shiny&&!col.art_style;
+              const rarityEstimated=!!record._rarityEstimatedAfterLoad||(!mapped&&!record.rarity);
+              if(mapped){
+                if(!ambiguousRarity||!record.rarity) record.rarity=mapped;
+                if(card){card.rarity=record.rarity||mapped;card.catalogRarity=record.rarity||mapped;card.rarityEstimated=rarityEstimated;}
+              }
+              record.rarityEstimated=rarityEstimated;
+              if(card) card.rarityEstimated=rarityEstimated;
             }
             if(!g) continue;
             const attacks=this.attacksFrom(g);
