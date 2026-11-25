@@ -9497,6 +9497,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const energyBadges = inst.energies.length
           ? inst.energies.map(e => `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white border border-slate-300 text-[10px] font-black">${renderTypeBadgeSvg(e, 13)}${TYPE_META[e].code}</span>`).join(' ')
           : '<span class="text-slate-400">なし</span>';
+        const conditionLabels={Poisoned:'どく',Burned:'やけど',Asleep:'ねむり',Paralyzed:'マヒ',Confused:'こんらん'};
+        const conditionSummary=[...(inst.statusEffects||[]),...(inst.status?[inst.status]:[])].map(x=>conditionLabels[x]).filter(Boolean).join('・');
         const fieldStatusHtml = `
           <div class="bg-slate-100 border border-slate-300 rounded-2xl p-2.5 mb-2 text-xs space-y-1">
             <div class="flex justify-between items-center font-black">
@@ -9507,6 +9509,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
               <span class="text-[11px] font-bold text-slate-600 mr-1">ついているエネルギー(${inst.energies.length}個):</span>
               ${energyBadges}
             </div>
+            ${conditionSummary?'<div class="text-[11px] font-black text-rose-700">状態：'+conditionSummary+'</div>':''}
           </div>
         `;
 
@@ -9520,7 +9523,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if (z === 'active' && this.o.active) {
             prevList = c.attacks.map(a => this.calcDamagePreview(inst, a, this.o.active, 'player'));
             c.attacks.forEach((a, ai) => {
-              const ok = this.canPay(inst, a.cost) && !this.isFirstTurnFor('player');
+              const ok = this.canPay(inst, a.cost) && !this.isFirstTurnFor('player') && !['Asleep','Paralyzed'].includes(inst.status);
               act += `<button ${ok ? '' : 'disabled'} onclick="battle.attack('player',${ai});ui.closeCardModal();" class="px-4 py-2 rounded-xl ${ok ? 'bg-gradient-to-r from-rose-500 to-orange-500 text-white font-black shadow' : 'bg-slate-200 text-slate-400'} text-xs">${a.name} (${prevList[ai].final})</button>`;
             });
           }
