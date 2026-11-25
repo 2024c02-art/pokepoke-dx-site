@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ポケポケDX v41 日本語カード表示・シークレット報酬版 | ぽきもんかーどばとる</title>
+  <title>ポケポケDX v42 日本語カード画像強化・秘密コード特典版 | ぽきもんかーどばとる</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
@@ -1341,14 +1341,19 @@
     function getJapaneseCardImageUrl(card) {
       const print = card && (JAPANESE_CARD_IMAGE_PRINTS[card.id] || (card.setCode && card.collectorNumber ? { set: card.setCode, number: card.collectorNumber } : null));
       if (!print) return '';
+      const localId = String(parseInt(print.number, 10));
+      if (!/^\d+$/.test(localId) || !print.set) return '';
+      // TCGdex Japanese Pocket artwork endpoint: /ja/tcgp/{set}/{localId}/high.webp
+      return `https://assets.tcgdex.net/ja/tcgp/${encodeURIComponent(print.set)}/${localId}/high.webp`;
+    }
+    function getOfficialJapaneseCardImageFallbackUrl(card) {
+      const print = card && (JAPANESE_CARD_IMAGE_PRINTS[card.id] || (card.setCode && card.collectorNumber ? { set: card.setCode, number: card.collectorNumber } : null));
+      if (!print) return '';
       const number = String(print.number).padStart(3, '0');
-      const embeddedKey = `${print.set}-${Number(number)}`;
-      // Built-in card art is English. Always prefer the Japanese print endpoint.
       const hashPath = print.hash ? `${print.hash}/` : '';
       const sourceUrl = `https://game.pokemontcgpocket.app/ja/tcgp/${encodeURIComponent(print.set)}/${number}/${hashPath}high.webp`;
       return `https://www.pokemontcgpocket.app/_next/image?q=75&url=${encodeURIComponent(sourceUrl)}&w=3840`;
     }
-
     function hasJapaneseText(value) { return /[\u3040-\u30ff\u3400-\u9fff]/.test(String(value || '')); }
     function getJapaneseDetailForCard(card) {
       if (!card) return null; if (card.jpDetail) return card.jpDetail;
@@ -1367,7 +1372,8 @@
       const imageUrl = getJapaneseCardImageUrl(card);
       if (!imageUrl) return fallbackSvg;
       const safeName = String(getCardDisplayName(card)).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
-      return `<div class="relative w-full h-full overflow-hidden flex items-center justify-center"><div class="absolute inset-0">${fallbackSvg}</div><img src="${imageUrl}" alt="${safeName}" loading="lazy" decoding="async" class="absolute inset-0 w-full h-full object-${imageFit}" onerror="this.remove()"></div>`;
+      const imageFallback = getOfficialJapaneseCardImageFallbackUrl(card);
+      return `<div class="relative w-full h-full overflow-hidden flex items-center justify-center"><div class="absolute inset-0">${fallbackSvg}</div><img src="${imageUrl}" data-fallback-src="${imageFallback}" alt="${safeName}" loading="lazy" decoding="async" class="absolute inset-0 w-full h-full object-${imageFit}" onerror="if(this.dataset.fallbackSrc&&!this.dataset.fallbackTried){this.dataset.fallbackTried=1;this.src=this.dataset.fallbackSrc}else this.remove()"></div>`;
     }
 
     /* ==================== 3. 本家ポケポケ公式拡張パック（全30種類） ==================== */
@@ -1714,19 +1720,32 @@
         this.renderList();
         document.getElementById('modal-account').classList.remove('hidden');
       },
-      redeemSecretCode() {
-        const input=document.getElementById('acc-secret-code'); const code=String(input?.value||'').trim().toUpperCase().replace(/[\\s-]/g,'');
-        if(!code){ui.toast('コードを入力してください');return false;}
-        const reward=({POKEDXHOURGLASS10000:10000})[code];
-        if(!reward){ui.toast('コードが違います');return false;}
-        const redeemed=new Set(Array.isArray(this.data.secretCodesRedeemed)?this.data.secretCodesRedeemed:[]);
-        if(redeemed.has(code)){ui.toast('このコードは使用済みです');return false;}
-        const current=this.sanitizeCount(this.data.hourglass,240,10000000);
-        if(current+reward>10000000){ui.toast('砂時計の所持上限に達しています');return false;}
-        redeemed.add(code); this.data.secretCodesRedeemed=[...redeemed].slice(0,100); this.data.hourglass=current+reward;
-        this.saveCurrent(); if(input)input.value=''; ui.toast(`砂時計を${reward.toLocaleString()}個受け取りました！`); return true;
+      async redeemSecretCode() {
+        const input = document.getElementById('acc-secret-code');
+        const code = String(input?.value || '').trim().toUpperCase().replace(/\s+/g, '');
+        if (!code) { ui.toast('コードを入力してください'); return false; }
+        if (!window.crypto?.subtle || typeof TextEncoder === 'undefined') { ui.toast('安全なコード照合にはHTTPS接続が必要です'); return false; }
+        let digest = '';
+        try {
+          const bytes = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
+          digest = Array.from(new Uint8Array(bytes)).map(v => v.toString(16).padStart(2, '0')).join('');
+        } catch (e) { ui.toast("コード照合に失敗しました。ページを再読み込みしてください"); return false; }
+        const expectedDigest = '9a31c0dec6edb78edb216ce81dd45daaeb28a5c232b38caccabfe51a084dc70e';
+        if (digest !== expectedDigest) { ui.toast('コードが違います'); return false; }
+        const rewardKey = 'DX_MIRACLE_2026';
+        const reward = 100000;
+        const redeemed = new Set(Array.isArray(this.data.secretCodesRedeemed) ? this.data.secretCodesRedeemed : []);
+        if (redeemed.has(rewardKey)) { ui.toast('この特典コードは使用済みです'); return false; }
+        const current = this.sanitizeCount(this.data.hourglass, 240, 10000000);
+        if (current + reward > 10000000) { ui.toast('砂時計の所持上限に達しています'); return false; }
+        redeemed.add(rewardKey);
+        this.data.secretCodesRedeemed = [...redeemed].slice(0, 100);
+        this.data.hourglass = current + reward;
+        this.saveCurrent();
+        if (input) input.value = '';
+        ui.toast('特別報酬！砂時計を' + reward.toLocaleString() + '個受け取りました！');
+        return true;
       },
-
       closeModal() { document.getElementById('modal-account').classList.add('hidden'); },
 
       renderList() {
@@ -2157,7 +2176,7 @@
               <span>${c.rarityEstimated ? '？' : (RARITY_STARS[c.rarity] || c.rarity)}</span>
               <span>${c.weakness && c.weakness !== 'None' ? `弱:${renderTypeBadgeSvg(c.weakness, 10)}+20` : ''}</span>
             </div>
-            ${getJapaneseCardImageUrl(c) ? `<img src="${getJapaneseCardImageUrl(c)}" alt="${escapeHtml(displayName)}" loading="lazy" decoding="async" class="absolute inset-0 z-30 w-full h-full object-contain rounded-lg" onerror="this.remove()">` : ''}
+            ${getJapaneseCardImageUrl(c) ? `<img src="${getJapaneseCardImageUrl(c)}" data-fallback-src="${getOfficialJapaneseCardImageFallbackUrl(c)}" alt="${escapeHtml(displayName)}" loading="lazy" decoding="async" class="absolute inset-0 z-30 w-full h-full object-contain rounded-lg" onerror="if(this.dataset.fallbackSrc&&!this.dataset.fallbackTried){this.dataset.fallbackTried=1;this.src=this.dataset.fallbackSrc}else this.remove()">` : ''}
           </div>
         `;
       },
@@ -6859,19 +6878,25 @@ const PACK_CATALOG_DATA = {
           const jpLink = jpUrl ? `<a class="mt-1 inline-block text-[9px] font-black text-sky-700 underline" href="${jpUrl}" target="_blank" rel="noopener noreferrer">日本語カード名・HP・ワザ・効果を確認 ↗</a>` : '';
           const setCode = String(c.sourceSet||'A1').trim();
           const imageNum = String(c.number||'').padStart(3,'0');
+          const imageLocalId = String(parseInt(String(c.number || ''), 10));
+          const japaneseImageUrl = c.number && c.sourceSet && /^\d+$/.test(imageLocalId) ? `https://assets.tcgdex.net/ja/tcgp/${encodeURIComponent(setCode)}/${imageLocalId}/high.webp` : '';
           const japaneseImageSource = c.number && c.sourceSet ? `https://game.pokemontcgpocket.app/ja/tcgp/${encodeURIComponent(setCode)}/${imageNum}/high.webp` : '';
-          const japaneseImageUrl = japaneseImageSource ? `https://www.pokemontcgpocket.app/_next/image?q=75&url=${encodeURIComponent(japaneseImageSource)}&w=3840` : '';
+          const japaneseImageFallbackUrl = japaneseImageSource ? `https://www.pokemontcgpocket.app/_next/image?q=75&url=${encodeURIComponent(japaneseImageSource)}&w=3840` : '';
           const displayName = c.jpDetail?.nameJa || c.name || c.playable?.jpName || 'カード情報未登録';
           const artFallback = `<div class="aspect-[3/4] rounded-lg bg-gradient-to-br from-slate-100 via-white to-slate-200 border border-slate-200 flex flex-col items-center justify-center p-2 text-center"><div class="text-[10px] font-black text-slate-400">${number}</div><div class="text-2xl my-1">${/ex|メガ/i.test(displayName)?'⭐':'🎴'}</div><div class="text-[9px] text-slate-400 mt-1">${c.jpDetail?'日本語データ照合済み':'日本語名表示'}</div></div>`;
-          const cardArt = japaneseImageUrl ? `<img src="${japaneseImageUrl}" alt="${safe(displayName)} ${number}" loading="lazy" decoding="async" class="w-full rounded-lg object-contain bg-slate-50" onerror="packSystem.imgFallback(this)">${artFallback.replace('flex flex-col','hidden flex-col')}` : artFallback;
+          const cardArt = japaneseImageUrl ? `<img src="${japaneseImageUrl}" data-fallback-src="${japaneseImageFallbackUrl}" alt="${safe(displayName)} ${number}" loading="lazy" decoding="async" class="w-full rounded-lg object-contain bg-slate-50" onerror="packSystem.imgFallback(this)">${artFallback.replace('flex flex-col','hidden flex-col')}` : artFallback;
           return `<div class="flex flex-col rounded-xl border border-slate-200 bg-white p-2 min-w-0 shadow-sm">${cardArt}<div class="mt-1 text-sm font-black text-slate-900 text-center break-words">${safe(displayName)}</div><div class="mt-1 text-[10px] text-slate-500 font-bold text-center">${c.verifiedName?(c.partialVerified?'収録名・番号照合済み':'収録名確認済み'):c.featured?'注目カード（未照合）':'ゲーム内登録名'}${c.rarity?` ・ レアリティ ${safe(RARITY_STARS[c.rarity]||c.rarity)}`:' ・ レアリティ未登録'}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):japaneseMissingDetailHtml(c.playable,displayName)}${jpLink}</div>`;
         }).join('') + moreButton;
         grid.scrollTop = keepScroll ? prevScroll : 0;
       },
       closePackCards() { document.getElementById('modal-pack-cards').classList.add('hidden'); },
 
-      // Keep the Japanese card-name placeholder if a Japanese image cannot load.
-      imgFallback(img) { img.style.display='none'; if(img.nextElementSibling) img.nextElementSibling.style.display='flex'; },
+      // Try the official Japanese image endpoint if the TCGdex Japanese CDN misses.
+      // Never fall back to the bundled English card artwork.
+      imgFallback(img) {
+        if (img.dataset.fallbackSrc && !img.dataset.fallbackTried) { img.dataset.fallbackTried=1; img.src=img.dataset.fallbackSrc; return; }
+        img.style.display='none'; if(img.nextElementSibling) img.nextElementSibling.style.display='flex';
+      },
 
       setSeriesFilter(s) {
         this.seriesFilter = s;
