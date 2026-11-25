@@ -1335,7 +1335,15 @@
     // 日本語版カード画像。セット番号はv23の日本語パック収録リストと照合。
     const JAPANESE_CARD_IMAGE_PRINTS = Object.freeze({"c_charmander":{"set":"A1","number":"033"},"c_charmeleon":{"set":"A1","number":"034"},"c_charizard_ex":{"set":"A1","number":"036"},"c_mega_charizard_y":{"set":"B1a","number":"014"},"c_shiny_charizard":{"set":"A2b","number":"108"},"c_moltres_ex":{"set":"A1","number":"047"},"c_hooh_ex":{"set":"A4","number":"034"},"c_mega_blaziken_ex":{"set":"B1","number":"036"},"c_squirtle":{"set":"A1","number":"053"},"c_wartortle":{"set":"A1","number":"054"},"c_blastoise_ex":{"set":"A1","number":"056"},"c_palkia_ex":{"set":"A2","number":"049"},"c_greninja_ex":{"set":"B1","number":"073"},"c_suicune_ex":{"set":"A4a","number":"020"},"c_mega_gyarados_ex":{"set":"B1","number":"052"},"c_bulbasaur":{"set":"A1","number":"001"},"c_ivysaur":{"set":"A1","number":"002"},"c_venusaur_ex":{"set":"A1","number":"004"},"c_celebi_ex":{"set":"A1a","number":"003"},"c_buzzwole_ex":{"set":"A3a","number":"006"},"c_meowscarada_ex":{"set":"B2a","number":"003"},"c_pikachu_ex":{"set":"A1","number":"096"},"c_zapdos_ex":{"set":"A1","number":"104"},"c_raikou_v":{"set":"A4a","number":"025"},"c_miraidon_ex":{"set":"B3a","number":"019"},"c_dedenne_ex":{"set":"B3b","number":"024"},"c_ralts":{"set":"A1","number":"130"},"c_kirlia":{"set":"A1","number":"131"},"c_gardevoir_ex":{"set":"A1","number":"132"},"c_mega_gardevoir_ex":{"set":"B2","number":"066"},"c_mewtwo_ex":{"set":"A1","number":"129"},"c_mega_mewtwo_x":{"set":"C1","number":"056"},"c_mew_ex":{"set":"A1a","number":"032"},"c_lunala_ex":{"set":"A3","number":"087"},"c_sylveon_ex":{"set":"A3b","number":"034"},"c_lucario_ex":{"set":"A2b","number":"043"},"c_mega_lucario_ex":{"set":"B3","number":"081"},"c_koraidon_ex":{"set":"B3a","number":"036"},"c_umbreon_vmax":{"set":"A4","number":"112"},"c_darkrai_vstar":{"set":"A2","number":"110"},"c_dialga_ex":{"set":"A2","number":"119"},"c_solgaleo_ex":{"set":"A3","number":"122"},"c_rayquaza_vmax":{"set":"B4","number":"119"},"c_mega_rayquaza_ex":{"set":"B4","number":"120"},"c_giratina_vstar":{"set":"A2b","number":"035"},"c_mega_altaria_ex":{"set":"B1","number":"102"},"c_arceus_ex":{"set":"A2a","number":"071"},"c_lugia_ex":{"set":"A4","number":"149"},"c_eevee":{"set":"A3b","number":"055"},"c_bidoof":{"set":"A2","number":"135"},"c_bibarel":{"set":"A2","number":"136"},"t_prof_research":{"set":"P-A","number":"007","hash":"92f90e05b03ef41e"},"t_pokeball":{"set":"P-A","number":"005","hash":"bec2b4436bb1c633"},"t_potion":{"set":"P-A","number":"001","hash":"5b835e9c4a067eff"},"t_x_speed":{"set":"P-A","number":"002","hash":"c0ce49ff4fb1d575"},"t_sabrina":{"set":"A1","number":"225"},"t_giovanni":{"set":"A1","number":"223"},"t_misty":{"set":"A1","number":"220"},"t_erika":{"set":"A1","number":"219"},"t_red_card":{"set":"P-A","number":"006","hash":"d097bb6ea4fe5b0c"},"t_rare_candy":{"set":"A3","number":"144"}});
     function getJapaneseCardImageUrl(card) {
-      const print = card && JAPANESE_CARD_IMAGE_PRINTS[card.id];
+      if (!card) return '';
+      // Catalog cards use the local images/ assets already deployed with this site.
+      const setCode = card.sourceSet || card.setCode || '';
+      const collectorNumber = card.collectorNumber ?? card.number;
+      if (setCode && collectorNumber && typeof EMBEDDED_CARD_IMAGES !== 'undefined') {
+        const localImage = EMBEDDED_CARD_IMAGES[`${String(setCode).trim()}-${Number(collectorNumber)}`];
+        if (localImage) return localImage;
+      }
+      const print = JAPANESE_CARD_IMAGE_PRINTS[card.id];
       if (!print) return '';
       const number = String(print.number).padStart(3, '0');
       const hashPath = print.hash ? `${print.hash}/` : '';
@@ -1471,6 +1479,8 @@
     ];
 
     const CARD_MAP = Object.fromEntries(CARDS.map(c => [c.id, c]));
+    const STARTER_CARDS = CARDS.slice();
+    const STARTER_CARD_IDS = new Set(STARTER_CARDS.map(c => c.id));
 
     /* v31: effects are keyed by (card id : attack name) so same-named attacks on other cards can never collide. */
     const ATTACK_FX = {
@@ -1541,7 +1551,7 @@
 
       createDefault(id, name = 'トレーナー', avatar = 'TR', password = '') {
         const collection = {};
-        CARDS.forEach(c => { collection[c.id] = 2; });
+        STARTER_CARDS.forEach(c => { collection[c.id] = 2; });
         return {
           id, name, avatar, password,
           hourglass: 240, gold: 500, packPoints: 200,
@@ -1606,7 +1616,7 @@
           CARDS.forEach(c => {
             const rawCount = savedCollection[c.id];
             loaded.collection[c.id] = rawCount === undefined
-              ? defaults.collection[c.id]
+              ? (defaults.collection[c.id] ?? 0)
               : this.sanitizeCount(rawCount, 0, 999);
           });
           const savedDecks = Array.isArray(loaded.decks) ? loaded.decks : defaults.decks;
@@ -1626,7 +1636,7 @@
         }
         if (!loaded.collection || typeof loaded.collection !== 'object' || Array.isArray(loaded.collection)) loaded.collection = {};
         CARDS.forEach(c => {
-          loaded.collection[c.id] = this.sanitizeCount(loaded.collection[c.id], 2, 999);
+          loaded.collection[c.id] = this.sanitizeCount(loaded.collection[c.id], STARTER_CARD_IDS.has(c.id) ? 2 : 0, 999);
         });
         loaded.hourglass = this.sanitizeCount(loaded.hourglass, 240);
         loaded.gold = this.sanitizeCount(loaded.gold, 500);
@@ -6422,6 +6432,158 @@ const PACK_CATALOG_DATA = {
       return JAPANESE_CARD_DETAILS[key] || null;
     };
 
+    // v34: convert every listed set/collector-number into a card record.
+    // Exact print data is preferred; reprints can reuse another print's same-name profile.
+    // Cards whose effect implementation is not available still enter packs/collections/decks
+    // and use clearly-labelled simplified battle handling rather than being silently excluded.
+    const CATALOG_TYPE_MAP = {
+      '草':'Grass','炎':'Fire','水':'Water','雷':'Lightning','超':'Psychic',
+      '闘':'Fighting','悪':'Darkness','鋼':'Metal','ドラゴン':'Dragon','竜':'Dragon',
+      '無':'Colorless','無色':'Colorless'
+    };
+    const CATALOG_RARITY_MAP = {
+      C:'C',U:'U',R:'R',RR:'RR',SR:'SR',SAR:'SAR',UR:'UR',
+      AR:'SR',S:'R',IM:'UR',SSR:'UR'
+    };
+    const CATALOG_TRAINER_NAMES = new Set([
+      'あまいミツ','いいきずぐすり','かけだし調査員','さびれたスタンド','しんかのきせき',
+      'ずがいの化石','たての化石','たべのこし','でんきだま','なんでもなおし','むしよけスプレー',
+      'カンナ','カンナギタウンの長老','ギンガ団のしたっぱ','グラジオ','グリーン','グリーンの挑発',
+      'ジュン','セキ','セレナの選択','チリ','デンジ','ハウ','ハンサム','フレンドリィショップのお兄さん',
+      'ホープトレーナー','ポケモンの笛','ポケモンセンターのお姉さん','ロケット団のしたっぱ',
+      '幻の石板','ビーストウォール','ビーストナイト','ゴールドスプレー'
+    ]);
+    const catalogType = value => CATALOG_TYPE_MAP[value] || 'Colorless';
+    const catalogDamage = value => {
+      const n = Number.parseInt(String(value ?? '').replace(/[^0-9-]/g,''),10);
+      return Number.isFinite(n) ? Math.max(0,n) : 20;
+    };
+    const catalogAttackCost = (attack, fallbackType) => {
+      const cost = attack && attack.cost && typeof attack.cost === 'object' ? attack.cost : {};
+      const mapped = Object.entries(cost).flatMap(([key,count]) => {
+        const type = CATALOG_TYPE_MAP[key];
+        return type ? Array(Math.max(0,Math.min(5,Number(count)||0))).fill(type) : [];
+      });
+      return mapped.length ? mapped : [fallbackType || 'Colorless'];
+    };
+    const CATALOG_DETAIL_BY_NAME = new Map();
+    Object.values(JAPANESE_CARD_DETAILS).forEach(d => {
+      if (d && d.nameJa && !CATALOG_DETAIL_BY_NAME.has(d.nameJa)) CATALOG_DETAIL_BY_NAME.set(d.nameJa,d);
+    });
+    const STARTER_CARD_BY_PRINT = new Map();
+    Object.entries(JAPANESE_CARD_IMAGE_PRINTS).forEach(([id,print]) => {
+      if (print && print.set && print.number && CARD_MAP[id]) {
+        STARTER_CARD_BY_PRINT.set(`${print.set}-${Number(print.number)}`,CARD_MAP[id]);
+      }
+    });
+    const CATALOG_CARD_BY_PRINT = new Map();
+    const PACK_PULL_POOLS = Object.create(null);
+    const CATALOG_ENTRY_TOTALS = Object.create(null);
+    const catalogLineParts = rawLine => {
+      const bits = String(rawLine).replace(/\r/g,'').trim().split(':');
+      if (bits.length < 2) return null;
+      return {
+        number: bits[0].trim(),
+        name: bits.slice(1,bits.length>=3?-1:undefined).join(':').trim(),
+        rarity: bits.length>=3 ? bits[bits.length-1].trim() : ''
+      };
+    };
+    const inferCatalogAttackFx = text => {
+      const t = String(text||'');
+      if (/このポケモンから?.*エネルギーを\s*2個トラッシュ/.test(t)) return 'trash2';
+      if (/このポケモンにも\s*30ダメージ/.test(t)) return 'selfdmg30';
+      if (/このポケモンのHPを\s*30回復/.test(t)) return 'heal30';
+      if (/このポケモンのHPを\s*20回復/.test(t)) return 'heal20';
+      if (/相手のベンチ全員にも\s*20ダメージ/.test(t)) return 'bench_all20';
+      if (/相手のベンチ.*1匹.*30ダメージ/.test(t)) return 'bench_snipe30';
+      if (/自分のベンチ.*鋼エネルギーを2個つける/.test(t)) return 'metal_turbo';
+      return '';
+    };
+    const buildCatalogCard = (setCode, numberText, listedName, listedRarity) => {
+      const numericNumber = Number(numberText) || numberText;
+      const printKey = `${setCode}-${Number(numericNumber)}`;
+      const existingStarter = STARTER_CARD_BY_PRINT.get(printKey);
+      if (existingStarter) {
+        existingStarter.sourceSet = existingStarter.sourceSet || setCode;
+        existingStarter.collectorNumber = existingStarter.collectorNumber || Number(numericNumber);
+        existingStarter.catalogPrint = printKey;
+        return existingStarter;
+      }
+      const exact = japaneseCardDetail(setCode,numericNumber);
+      const profile = exact || CATALOG_DETAIL_BY_NAME.get(listedName) || null;
+      const detailSource = exact ? 'exact-print' : profile ? 'same-name-profile' : 'catalog-fallback';
+      const trainerType = profile?.trainerTypeJa || '';
+      const isTrainer = !!trainerType || CATALOG_TRAINER_NAMES.has(listedName) ||
+        /(?:団のしたっぱ|調査員|センターのお姉さん|ショップのお兄さん|トレーナー|の長老|の挑発|の選択)$/.test(listedName);
+      const category = isTrainer ? 'Trainer' : 'Pokemon';
+      const stageJa = profile?.stageJa || 'たね';
+      const stage = category === 'Trainer' ? null : /2進化/.test(stageJa) ? 'Stage2' : /1進化/.test(stageJa) ? 'Stage1' : 'Basic';
+      const type = category === 'Trainer' ? 'Trainer' : catalogType(profile?.typeJa);
+      const hpFallback = stage === 'Stage2' ? 140 : stage === 'Stage1' ? 90 : 60;
+      const hp = category === 'Pokemon' ? (Number(profile?.hp) || hpFallback) : 0;
+      const rawRarity = String(listedRarity || '').toUpperCase();
+      const rarity = CATALOG_RARITY_MAP[rawRarity] || (/ex$/.test(listedName) ? 'RR' : 'C');
+      const attackSource = Array.isArray(profile?.attacks) ? profile.attacks : [];
+      const attacks = category === 'Pokemon'
+        ? (attackSource.length ? attackSource.map(a => {
+            const attackText = a.effect || a.text || '';
+            const attack = {
+              name: a.name || 'ワザ',
+              cost: catalogAttackCost(a,type),
+              damage: catalogDamage(a.damage),
+              text: attackText
+            };
+            const fx = inferCatalogAttackFx(attackText);
+            if (fx) attack.fx = fx;
+            return attack;
+          }) : [{name:'通常攻撃',cost:[type],damage:Math.max(20,Math.round(hp*0.3/10)*10),text:'（ワザの詳細データ未登録：簡易処理）'}])
+        : [];
+      const rawAbility = Array.isArray(profile?.abilities) ? profile.abilities[0] : null;
+      const ability = category === 'Pokemon' && rawAbility
+        ? (typeof rawAbility === 'string' ? {name:rawAbility,text:'効果の詳細処理は簡易対応です。'} : {name:rawAbility.name||'特性',text:rawAbility.effect||rawAbility.text||'効果の詳細処理は簡易対応です。'})
+        : null;
+      const isEx = category === 'Pokemon' && /ex$/.test(listedName);
+      const id = `catalog_${String(setCode).replace(/[^a-zA-Z0-9]/g,'_')}_${String(numericNumber).padStart(3,'0')}`;
+      const card = {
+        id,name:profile?.nameJa||listedName,category,stage,
+        ...(category==='Pokemon' && stage!=='Basic' ? {} : {}),
+        type,hp,rarity,pack:'',retreat:category==='Pokemon' ? (Number.isFinite(Number(profile?.retreatCost)) ? Number(profile.retreatCost) : 1) : 0,
+        weakness:category==='Pokemon' ? (CATALOG_TYPE_MAP[profile?.weaknessText] || 'None') : 'None',
+        attacks, ...(ability ? {ability} : {}),
+        ...(isEx ? {isEx:true,pointValue:2} : {pointValue:1}),
+        ...(category==='Trainer' ? {subType:/サポート/.test(trainerType) || /サポート$/.test(listedName) ? 'Supporter' : 'Item', text:profile?.cardEffectText || 'カード効果の詳細処理は簡易対応です。'} : {}),
+        sourceSet:setCode,collectorNumber:Number(numericNumber),catalogPrint:printKey,catalogGenerated:true,detailSource,
+        sourceCardEffect:profile?.cardEffectText||'',sourceAttackData:detailSource!=='catalog-fallback'
+      };
+      // If the source profile supplies a specific attack id/effect already implemented in this game, retain it.
+      card.attacks.forEach(a => { if (!a.fx) { const fx=inferCatalogAttackFx(a.text); if(fx)a.fx=fx; } });
+      return card;
+    };
+    Object.entries(PACK_CATALOG_DATA).forEach(([packId,entry]) => {
+      const pool = [];
+      const seenIds = new Set();
+      String(entry.list||'').trim().split(/\n/).forEach(line => {
+        const parts = catalogLineParts(line);
+        if (!parts || !entry.sourceSet) return;
+        const printKey = `${entry.sourceSet}-${Number(parts.number)}`;
+        let card = CATALOG_CARD_BY_PRINT.get(printKey);
+        if (!card) {
+          card = buildCatalogCard(entry.sourceSet,parts.number,parts.name,parts.rarity);
+          CATALOG_CARD_BY_PRINT.set(printKey,card);
+          if (!CARD_MAP[card.id]) { CARDS.push(card); CARD_MAP[card.id]=card; }
+          card.sourceSet = card.sourceSet || entry.sourceSet;
+          card.collectorNumber = card.collectorNumber || Number(parts.number);
+          card.catalogPrint = printKey;
+        }
+        if (!seenIds.has(card.id)) { pool.push(card); seenIds.add(card.id); }
+      });
+      PACK_PULL_POOLS[packId] = pool;
+      CATALOG_ENTRY_TOTALS[packId] = pool.length;
+    });
+    // Pack pools intentionally contain only the numbered entries in that pack's own catalog.
+    const CATALOG_CARD_COUNT = CARDS.length;
+    const CATALOG_PRINT_COUNT = CATALOG_CARD_BY_PRINT.size;
+
     const PACK_CATALOG_META = {
   a1_charizard:{setTotal:286,packTotal:126,coverage:'complete'},a1_mewtwo:{setTotal:286,packTotal:125,coverage:'complete'},a1_pikachu:{setTotal:286,packTotal:126,coverage:'complete'},
   a1a_mew:{setTotal:86,coverage:'complete',verifiedPartial:86},a2_dialga:{setTotal:207,packTotal:126,coverage:'complete'},a2_palkia:{setTotal:207,packTotal:126,coverage:'complete'},
@@ -6494,7 +6656,7 @@ const PACK_CATALOG_DATA = {
         };
         let catalogEntries = entry ? entry.list.trim().split(/\n/).map(line => {
           const {number:num, name, rarity} = parseCatalogLine(line);
-          const match = CARDS.find(c => c.name === name);
+          const match = CATALOG_CARD_BY_PRINT.get(`${entry?.sourceSet || ''}-${Number(num)}`) || CARDS.find(c => c.name === name);
           return { number: num, name, rarity: rarity || '', sourceSet: entry?.sourceSet || '', nameLanguage: entry?.nameLanguage || 'ja', jpDetail: japaneseCardDetail(entry?.sourceSet, num), playable: match || null, verifiedName: true, partialVerified: !!entry?.partialVerified };
         }) : (() => {
           const featured = pack.sub.split(/\s*\/\s*/).filter(x => x && !/総集編/.test(x)).map(name => ({number:'',name,playable:CARDS.find(c=>c.name===name)||null,featured:true}));
@@ -6506,7 +6668,7 @@ const PACK_CATALOG_DATA = {
           const combined = new Map();
           Object.entries(PACK_CATALOG_DATA).forEach(([pid,data]) => data.list.trim().split(/\n/).forEach(line => {
             const {number,name,rarity}=parseCatalogLine(line); const key=(data.sourceSet||pid)+'-'+(Number(number)||number);
-            if(!combined.has(key)) combined.set(key,{number,name,rarity:rarity||'',sourceSet:data.sourceSet||'',nameLanguage:data.nameLanguage||'ja',jpDetail:japaneseCardDetail(data.sourceSet,number),playable:CARDS.find(c=>c.name===name)||null,packName:PACKS.find(p=>p.id===pid)?.name||pid,verifiedName:true,partialVerified:!!data.partialVerified});
+            if(!combined.has(key)) combined.set(key,{number,name,rarity:rarity||'',sourceSet:data.sourceSet||'',nameLanguage:data.nameLanguage||'ja',jpDetail:japaneseCardDetail(data.sourceSet,number),playable:CATALOG_CARD_BY_PRINT.get(`${data.sourceSet||''}-${Number(number)}`)||CARDS.find(c=>c.name===name)||null,packName:PACKS.find(p=>p.id===pid)?.name||pid,verifiedName:true,partialVerified:!!data.partialVerified});
           }));
           const shownPlayable = new Set(Array.from(combined.values()).map(x => x.playable && x.playable.id).filter(Boolean));
           CARDS.forEach(c => { if (!shownPlayable.has(c.id)) combined.set('game:'+c.id,{number:'',name:c.name,playable:c,packName:PACKS.find(p=>p.id===c.pack)?.name||c.pack}); });
@@ -6536,7 +6698,7 @@ const PACK_CATALOG_DATA = {
         modal.classList.remove('hidden');
         const toggle = showAll
           ? `<button type="button" onclick="packSystem.openPackCards('${packId}',false)" class="col-span-full mb-2 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs">${pack.name}に戻る</button><div class="col-span-full rounded-xl bg-slate-50 border border-slate-200 p-3 text-[10px] text-slate-600 font-bold">カード名は日本語表記です。カード画像も日本語版を優先表示し、読み込めない場合は内蔵画像に日本語名を添えて表示します。カード詳細は番号リンクから確認できます。<a class="underline text-sky-700" href="${JAPANESE_CARD_DATABASE_SOURCES.cardList}" target="_blank" rel="noopener noreferrer">日本語カード一覧</a> ／ <a class="underline text-sky-700" href="${JAPANESE_CARD_DATABASE_SOURCES.searchDatabase}" target="_blank" rel="noopener noreferrer">カードしらべ</a></div>`
-          : `<button type="button" onclick="packSystem.openPackCards('${packId}',true)" class="col-span-full mb-2 px-3 py-2 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-800 font-black text-xs">収録確認済み・ゲーム内登録カード全件を見る</button>`;
+          : `<button type="button" onclick="packSystem.openPackCards('${packId}',true)" class="col-span-full mb-2 px-3 py-2 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-800 font-black text-xs">収録カードを全件見る</button>`;
         const status = !showAll && !isComplete ? `<div class="col-span-full rounded-xl ${entry?.partialVerified?'bg-sky-50 border-sky-200 text-sky-900':'bg-amber-50 border-amber-200 text-amber-900'} border p-3 text-xs font-bold">${entry?.partialVerified?'部分照合：表示分のカード名・番号・レアリティはデータベースを確認済みです。残りの収録分は未照合です。':'このパックの完全な収録リストは未登録です。ここにはパック設定の注目カードと、ゲーム内に登録済みのカードだけを表示しています。'}</div>` : '';
         const languageNote = !showAll && entry?.nameLanguage === 'en' ? `<div class="col-span-full rounded-xl bg-sky-50 border border-sky-200 text-sky-900 p-3 text-xs font-bold">カード番号で日本語データベースと照合しました。取得済みカードは日本語名・HP・タイプ・進化段階・弱点・にげるコスト・ワザ名／ダメージ・特性名を内蔵表示します。効果文全文は各カードの参照元ページで確認できます。未取得分は別途確認できるよう参照リンクを表示します。照合用：<a class="underline font-black" href="${JAPANESE_CARD_DATABASE_SOURCES.packList}" target="_blank" rel="noopener noreferrer">日本語カード・拡張パック一覧</a> ／ <a class="underline font-black" href="${JAPANESE_CARD_DATABASE_SOURCES.searchDatabase}" target="_blank" rel="noopener noreferrer">カードしらべ</a>（いずれも非公式データベース）。</div>` : '';
         const safe = (v) => String(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -6687,15 +6849,15 @@ const PACK_CATALOG_DATA = {
         accountMgr.data.packPoints = (accountMgr.data.packPoints || 0) + count * 15;
         const packMeta = PACKS.find(p => p.id === packId);
         const featuredCard = packMeta && CARD_MAP[packMeta.artCard];
-        const theme = CARDS.filter(c => c.pack === packId);
-        if (featuredCard && !theme.some(x => x.id === featuredCard.id)) theme.push(featuredCard);
-
-        const allCom = CARDS.filter(c => ['C', 'U'].includes(c.rarity));
-        const allRare = CARDS.filter(c => ['R', 'RR', 'SR', 'SAR', 'UR'].includes(c.rarity));
-        const allSrPlus = CARDS.filter(c => ['SR', 'SAR', 'UR'].includes(c.rarity));
-        const themeSrPlus = theme.filter(c => ['SR', 'SAR', 'UR'].includes(c.rarity));
-        const comPool = theme.filter(c => ['C', 'U'].includes(c.rarity)).length >= 2 ? theme.filter(c => ['C', 'U'].includes(c.rarity)) : allCom;
-        const rarePool = theme.filter(c => ['R', 'RR', 'SR', 'SAR', 'UR'].includes(c.rarity)).length >= 1 ? theme.filter(c => ['R', 'RR', 'SR', 'SAR', 'UR'].includes(c.rarity)) : allRare;
+        const theme = [...(PACK_PULL_POOLS[packId] || CARDS.filter(c => c.pack === packId))];
+        if (!theme.length) throw new Error(`Pack pull pool is empty: ${packId}`);
+        const commonPool = theme.filter(c => ['C', 'U'].includes(c.rarity));
+        const rarePoolRaw = theme.filter(c => ['R', 'RR', 'SR', 'SAR', 'UR'].includes(c.rarity));
+        const srPool = theme.filter(c => ['SR', 'SAR', 'UR'].includes(c.rarity));
+        // Every random choice stays inside this exact pack. Missing rarity labels use the pack pool itself.
+        const comPool = commonPool.length ? commonPool : theme;
+        const rarePool = rarePoolRaw.length ? rarePoolRaw : theme;
+        const themeSrPlus = srPool.length ? srPool : rarePool;
 
         const pulled = [];
         for (let p = 0; p < count; p++) {
@@ -6709,12 +6871,11 @@ const PACK_CATALOG_DATA = {
           const forceSr = (count === 10 && p === 9);
           let pool = rarePool;
           if (forceSr) {
-            // 10連の50枚目は、対象パックにSR以上がなければ全カードから選び、必ずSR以上にする。
-            pool = themeSrPlus.length ? themeSrPlus : allSrPlus;
-          } else if (featuredCard && roll < 0.35) pool = [featuredCard];
-          else if (roll < 0.55) pool = rarePool.filter(c => ['UR', 'SAR'].includes(c.rarity));
-          else if (roll < 0.85) pool = rarePool.filter(c => ['SR', 'RR'].includes(c.rarity));
-          if (pool.length === 0) pool = rarePool;   // stay inside this pack (was: any rare card in the game)
+            // 10連の最後も対象パック内から選ぶ。SR以上が登録されていない場合は同パックのレア枠に戻す。
+            pool = themeSrPlus;
+          } else if (roll < 0.25) pool = rarePool.filter(c => ['UR', 'SAR'].includes(c.rarity));
+          else if (roll < 0.70) pool = rarePool.filter(c => ['SR', 'RR'].includes(c.rarity));
+          if (pool.length === 0) pool = rarePool;
           const rc = pool[Math.floor(Math.random() * pool.length)];
           const isNew = (accountMgr.data.collection[rc.id] || 0) === 0;
           pulled.push({ card: rc, isNew, order: pulled.length });
@@ -6962,7 +7123,7 @@ const PACK_CATALOG_DATA = {
 
       claimPackReward(packId) {
         const pack = PACKS.find(p => p.id === packId);
-        const targets = CARDS.filter(c => c.pack === packId);
+        const targets = PACK_PULL_POOLS[packId] || CARDS.filter(c => c.pack === packId);
         if (!pack || !targets.length) { ui.toast('このパックは報酬対象外です'); return; }
         const missing = targets.filter(c => Number(accountMgr.data.collection[c.id] || 0) < 1);
         if (missing.length) { ui.toast(`未収集カードが${missing.length}種類あります`); return; }
@@ -6996,7 +7157,7 @@ const PACK_CATALOG_DATA = {
         const percent = total ? Math.round(ownedCards.length / total * 100) : 0;
         const claimedAll = !!accountMgr.data.allCollectionRewardClaimed;
         const rewardPacks = PACKS.map(pack => {
-          const cards = CARDS.filter(c => c.pack === pack.id);
+          const cards = PACK_PULL_POOLS[pack.id] || CARDS.filter(c => c.pack === pack.id);
           if (!cards.length) return null;
           const count = cards.filter(c => Number(accountMgr.data.collection[c.id] || 0) > 0).length;
           const complete = count === cards.length;
@@ -7008,7 +7169,7 @@ const PACK_CATALOG_DATA = {
               : `<span class="px-2 py-1 rounded-lg bg-slate-100 text-slate-500 text-[9px] font-black">あと${cards.length - count}種</span>`;
           return `<div class="rounded-xl border ${complete ? 'border-emerald-200 bg-emerald-50/70' : 'border-slate-200 bg-white/80'} p-2.5 space-y-1.5"><div class="flex items-center justify-between gap-2"><span class="text-[10px] font-black text-slate-800">${escapeHtml(pack.name)}</span><span class="text-[9px] font-black text-slate-500">${count}/${cards.length}</span></div><div class="h-1.5 rounded-full bg-slate-200 overflow-hidden"><div class="h-full ${complete ? 'bg-emerald-500' : 'bg-sky-500'}" style="width:${Math.round(count/cards.length*100)}%"></div></div><div class="flex items-center justify-between gap-2"><span class="text-[8px] font-bold ${complete ? 'text-emerald-700' : 'text-slate-500'}">${complete ? 'コンプリート！' : '収集中'}</span>${button}</div></div>`;
         }).filter(Boolean);
-        panel.innerHTML = `<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div class="flex-1"><div class="text-sm font-black text-slate-900">コレクション完成報酬</div><div class="text-[9px] text-slate-500 font-bold mt-0.5">対戦データ登録済みの${total}種類が対象（全30パックの公式収録カード全件ではありません）</div><div class="mt-2 flex items-center gap-2"><div class="h-2 flex-1 rounded-full bg-slate-200 overflow-hidden"><div class="h-full bg-gradient-to-r from-sky-500 to-emerald-500" style="width:${percent}%"></div></div><span class="text-[10px] font-black text-slate-700">${ownedCards.length}/${total}種類 (${percent}%)</span></div></div><div class="flex flex-col items-start sm:items-end gap-1"><div class="text-[9px] font-bold text-slate-600">全種類達成報酬：GOLD+200 / PT+100 / 砂時計+60</div>${claimedAll ? '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-black">全達成報酬 受取済み</span>' : ownedCards.length === total ? '<button onclick="deckBuilder.claimAllCollectionReward()" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 text-slate-950 text-[10px] font-black shadow">全カード報酬を受け取る</button>' : '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-black">全種類集めると受取可能</span>'}</div></div><div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">${rewardPacks.join('')}</div><div class="text-[8px] text-slate-400 font-bold">パック別報酬：コンプリートごとに GOLD+25 / PT+10 / 砂時計+6。対象外のパックは、現在の対戦カードデータに該当カードが未登録です。</div>`;
+        panel.innerHTML = `<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div class="flex-1"><div class="text-sm font-black text-slate-900">コレクション完成報酬</div><div class="text-[9px] text-slate-500 font-bold mt-0.5">全30パックの収録カード${total}種類を対象（排出・収集・デッキ登録に対応）</div><div class="mt-2 flex items-center gap-2"><div class="h-2 flex-1 rounded-full bg-slate-200 overflow-hidden"><div class="h-full bg-gradient-to-r from-sky-500 to-emerald-500" style="width:${percent}%"></div></div><span class="text-[10px] font-black text-slate-700">${ownedCards.length}/${total}種類 (${percent}%)</span></div></div><div class="flex flex-col items-start sm:items-end gap-1"><div class="text-[9px] font-bold text-slate-600">全種類達成報酬：GOLD+200 / PT+100 / 砂時計+60</div>${claimedAll ? '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-black">全達成報酬 受取済み</span>' : ownedCards.length === total ? '<button onclick="deckBuilder.claimAllCollectionReward()" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 text-slate-950 text-[10px] font-black shadow">全カード報酬を受け取る</button>' : '<span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-black">全種類集めると受取可能</span>'}</div></div><div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">${rewardPacks.join('')}</div><div class="text-[8px] text-slate-400 font-bold">パック別報酬：コンプリートごとに GOLD+25 / PT+10 / 砂時計+6。収録カードは全件排出・収集・デッキ登録できます。既存61枚以外の特性・トレーナー・追加効果はカード本文を表示し、未実装分は共通の簡易処理で動作します。</div>`;
       },
 
       render() {
@@ -7723,6 +7884,15 @@ const PACK_CATALOG_DATA = {
         return !!board && !board.supporterUsed && (RULES.SUPPORTER_ALLOWED_ON_FIRST_TURN || !this.isFirstTurnFor(side));
       },
 
+      isEvolutionPair(evolutionCard, baseCard) {
+        if (!evolutionCard || !baseCard || evolutionCard.category !== 'Pokemon' || baseCard.category !== 'Pokemon') return false;
+        if (evolutionCard.evolvesFrom) return baseCard.name === evolutionCard.evolvesFrom;
+        // Catalog data does not always include evolvesFrom. Use stage + type as a safe fallback.
+        if (evolutionCard.stage === 'Stage1') return baseCard.stage === 'Basic' && evolutionCard.type === baseCard.type;
+        if (evolutionCard.stage === 'Stage2') return baseCard.stage === 'Stage1' && evolutionCard.type === baseCard.type;
+        return false;
+      },
+
       isPlayable(id) {
         if (this.over || this.actionLocked || this.promotionModalOpen || (this.phase === 'setup' && this.localSetupReady)) return false;
         const c = CARD_MAP[id]; if (!c) return false;
@@ -7730,7 +7900,7 @@ const PACK_CATALOG_DATA = {
         if (this.currentSide !== 'player') return false;
         if (c.category === 'Pokemon') {
           if (c.stage === 'Basic') return this.p.bench.length < 3;
-          return this.canEvolveNow('player') && [this.p.active, ...this.p.bench].filter(Boolean).some(p => CARD_MAP[p.cardId].name === c.evolvesFrom && p.turnPlayed < this.turn);
+          return this.canEvolveNow('player') && [this.p.active, ...this.p.bench].filter(Boolean).some(p => this.isEvolutionPair(c,CARD_MAP[p.cardId]) && p.turnPlayed < this.turn);
         }
         if (c.category === 'Trainer') return c.subType === 'Supporter' ? this.canUseSupporter('player') : true;
         return false;
@@ -7764,8 +7934,8 @@ const PACK_CATALOG_DATA = {
             if (this.isOnlineP2P) this.syncToPeer(false);
           } else {
             if (!this.canEvolveNow('player')) { ui.toast('最初のターンは進化できません'); return; }
-            const cands = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))].filter(t => t.inst && CARD_MAP[t.inst.cardId].name === c.evolvesFrom && t.inst.turnPlayed < this.turn);
-            if (cands.length === 0) { ui.toast(`進化元「${c.evolvesFrom}」が場にいないか出したばかりです`); return; }
+            const cands = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))].filter(t => t.inst && this.isEvolutionPair(c,CARD_MAP[t.inst.cardId]) && t.inst.turnPlayed < this.turn);
+            if (cands.length === 0) { ui.toast(`進化条件を満たすポケモンが場にいないか、出したばかりです`); return; }
             ui.openSelectModal(`${c.name} に進化するポケモンを選択`, cands.map(t => `<div onclick="battle.evolve(${idx},'${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-emerald-700 mt-1">進化する</span></div>`).join(''));
           }
           return;
@@ -7787,10 +7957,10 @@ const PACK_CATALOG_DATA = {
         if (!evoC || !t || evoC.category !== 'Pokemon' || evoC.stage === 'Basic') return false;
         const baseC = CARD_MAP[t.cardId];
         if (!baseC || t.turnPlayed >= this.turn) return false;
-        const directLine = evoC.evolvesFrom === baseC.name;
+        const directLine = this.isEvolutionPair(evoC,baseC);
         const rareCandyLine = allowRareCandy && baseC.stage === 'Basic' && evoC.stage === 'Stage2' &&
           CARDS.some(c => c.category === 'Pokemon' && c.stage === 'Stage1' &&
-            c.evolvesFrom === baseC.name && evoC.evolvesFrom === c.name);
+            this.isEvolutionPair(c,baseC) && this.isEvolutionPair(evoC,c));
         if (!directLine && !rareCandyLine) return false;
         board.hand.splice(hIdx, 1);
         const dmg = t.maxHp - t.hp;
@@ -7817,8 +7987,9 @@ const PACK_CATALOG_DATA = {
           const evo = CARD_MAP[evoId];
           for (const base of field) {
             const baseName = CARD_MAP[base.inst.cardId].name;
+            const baseCard = CARD_MAP[base.inst.cardId];
             const hasMatchingStage1 = CARDS.some(c => c.category === 'Pokemon' && c.stage === 'Stage1' &&
-              c.evolvesFrom === baseName && evo.evolvesFrom === c.name);
+              this.isEvolutionPair(c,baseCard) && this.isEvolutionPair(evo,c));
             if (!hasMatchingStage1) continue;
             const key = `${evoId}|${base.z}|${base.i}`;
             if (!unique.has(key)) unique.set(key, { evoCardId: evoId, z: base.z, i: base.i, baseId: base.inst.cardId });
@@ -8017,6 +8188,12 @@ const PACK_CATALOG_DATA = {
             this.log('レッドカード！相手の手札を山札に戻して3枚引かせた！');
           }
         }
+        else if (c.catalogGenerated) {
+          // Generic playability fallback: do not pretend the printed effect is fully implemented.
+          const drawCount = c.subType === 'Supporter' ? 2 : 1;
+          this.drawCards(side,drawCount);
+          this.log(`${c.name}を使用（未実装効果の共通代替：カードを${drawCount}枚引く）`);
+        }
 
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
@@ -8205,6 +8382,16 @@ const PACK_CATALOG_DATA = {
         const inst = z === 'active' ? board.active : board.bench[i];
         if (!inst || inst.abilityUsed) return;
         const c = CARD_MAP[inst.cardId]; if (!c?.ability) return;
+
+        if (c.catalogGenerated) {
+          if (c.ability.passive) { if (side === 'player') ui.toast(`「${c.ability.name}」は自動特性です（詳細処理は簡易対応）`); return; }
+          inst.abilityUsed = true;
+          this.drawCards(side,1);
+          this.log(`${c.name}の「${c.ability.name}」を使用（未実装効果の共通代替：山札を1枚引く）`);
+          this.render();
+          if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
+          return;
+        }
 
         if (c.id === 'c_moltres_ex') {
           const fireTargets = board.bench.map((b, bi) => ({ b, bi })).filter(x => CARD_MAP[x.b.cardId].type === 'Fire');
@@ -8654,7 +8841,7 @@ const PACK_CATALOG_DATA = {
         for (const slot of boardSlots()) {
           if (!slot.inst || slot.inst.turnPlayed >= this.turn) continue;
           const evolutions = o.hand.map((id, hIdx) => ({ id, hIdx, c: CARD_MAP[id] }))
-            .filter(x => x.c?.category === 'Pokemon' && x.c.stage !== 'Basic' && x.c.evolvesFrom === CARD_MAP[slot.inst.cardId].name)
+            .filter(x => x.c?.category === 'Pokemon' && x.c.stage !== 'Basic' && this.isEvolutionPair(x.c,CARD_MAP[slot.inst.cardId]))
             .sort((a,b) => (a.c.stage === 'Stage1' ? 0 : 1) - (b.c.stage === 'Stage1' ? 0 : 1));
           const evo = evolutions[0];
           if (evo) this.evolveCard('opp', evo.hIdx, slot.z, slot.i);
