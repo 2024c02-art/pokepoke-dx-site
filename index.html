@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ポケポケDX v43 対戦ワザ効果対応拡張版 | ぽきもんかーどばとる</title>
+  <title>ポケポケDX v44 共有カード排出・レアリティ修正版 | ぽきもんかーどばとる</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
@@ -6709,15 +6709,17 @@ const PACK_CATALOG_DATA = {
            const jpStageMap={'たね':'Basic','1進化':'Stage1','2進化':'Stage2'};
            const normPack=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
            const packForPrint=col=>{
-             if(code==='b4b') return 'b4b_mega';
-             if(code==='pa'||code==='pb'||code==='pc') return '';
+             if(code==='b4b') return ['b4b_mega'];
+             if(code==='pa'||code==='pb'||code==='pc') return [];
              const candidates=PACKS.filter(p=>String(p.code||'').toLowerCase()===code);
+             if(/^shared(?:\s*\(|$)/i.test(String(col?.pack||''))) return candidates.map(p=>p.id);
              const token=normPack(col?.pack);
              const match=candidates.find(p=>{
                const art=normPack(p.artCard).replace(/^c/,'');
                return !!token&&(art.includes(token)||token.includes(art)||normPack(p.id).includes(token)||normPack(p.name).includes(token)||normPack(p.sub).includes(token));
              });
-             return match?.id||(candidates.length===1?candidates[0].id:'');
+             const packId=match?.id||(candidates.length===1?candidates[0].id:'');
+             return packId?[packId]:[];
            };
            const newRecords=[];
            for(const col of collections){
@@ -6744,8 +6746,9 @@ const PACK_CATALOG_DATA = {
                };
                newRecords.push(record);
              }
-             const matchedPack=packForPrint(col);
-             if(matchedPack&&!record.packIds.includes(matchedPack)) record.packIds.push(matchedPack);
+             for(const matchedPack of packForPrint(col)){
+               if(matchedPack&&!record.packIds.includes(matchedPack)) record.packIds.push(matchedPack);
+             }
              const mapped=this.rarityCode(col);
              const ambiguous=String(col.rarity||'')==='☆☆'&&!col.shiny&&!col.art_style;
              const knownRarity=!!record.rarity;
@@ -6823,7 +6826,7 @@ const PACK_CATALOG_DATA = {
               card.sourceNameEN=enDetail.name; card.enDetail=enDetail;
               if(!JAPANESE_CARD_DETAILS[record.key]){
                 card.detailStatus='available-en'; card.category=category; card.type=category==='Pokemon'?type:'Colorless'; card.stage=enDetail.stage; card.evolvesFrom=enDetail.evolvesFrom||null; card.hp=enDetail.hp; card.weakness=enDetail.weakness; card.retreat=enDetail.retreat; card.attacks=attacks; card.ability=ability; card.text=text; card.isEx=!!g.ex; card.pointValue=Number(g.points)||1;
-                if(col && this.rarityCode(col)){card.rarity=this.rarityCode(col);card.catalogRarity=card.rarity;card.rarityEstimated=false;}
+                if(col && record.rarity){card.rarity=record.rarity;card.catalogRarity=record.rarity;card.rarityEstimated=!!record.rarityEstimated;}
               }
               // Unlock only clean Pokémon attacks with fixed damage and no unsupported ability/effect.
               const simplePokemon=category==='Pokemon' && attacks.length>0 && attacks.every(a=>!a.unsupportedEffect) && !ability && !text && !g.subtype_2;
@@ -6850,12 +6853,13 @@ const PACK_CATALOG_DATA = {
                if(!card.pack&&record.packIds.length) card.pack=record.packIds[0];
                card.nameLanguage=record.nameLanguage||card.nameLanguage;
              }
-             const packId=record.packIds[0]||'';
-             const entry=packId&&PACK_CATALOG_DATA[packId];
-             if(entry&&!entry.list.trim().split(/\n/).some(line=>line.trim().startsWith(record.number+':'))){
-               entry.list=entry.list.trim()+'\n'+record.number+':'+record.name+':'+(record.rarity||'');
-               entry.expected=entry.list.trim().split(/\n/).length;
-               if(PACK_CATALOG_META[packId]) PACK_CATALOG_META[packId].packTotal=entry.expected;
+             for(const packId of record.packIds||[]){
+               const entry=PACK_CATALOG_DATA[packId];
+               if(entry&&!entry.list.trim().split(/\n/).some(line=>line.trim().startsWith(record.number+':'))){
+                 entry.list=entry.list.trim()+'\n'+record.number+':'+record.name+':'+(record.rarity||'');
+                 entry.expected=entry.list.trim().split(/\n/).length;
+                 if(PACK_CATALOG_META[packId]) PACK_CATALOG_META[packId].packTotal=entry.expected;
+               }
              }
            }
            if(collections.length){
@@ -7229,7 +7233,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       },
 
       sortResults(mode) {
-        const rk = { UR: 7, SAR: 6, SR: 5, RR: 4, R: 3, U: 2, C: 1 };
+        const rk = { UR: 9, IM: 9, SAR: 8, SSR: 7, SR: 6, RR: 5, AR: 4, S: 4, R: 3, U: 2, C: 1, P: 0 };
         const s = [...this.lastPulled].sort((a, b) => mode === 'rarity' ? (rk[b.card.rarity] || 0) - (rk[a.card.rarity] || 0) : a.order - b.order);
         this.renderPulled(s);
       },
