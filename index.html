@@ -580,6 +580,42 @@
     }
   </style>
 
+  <style id="v30-battle-scroll-followup">
+    /* v30: follow-up to v29's document-scroll rework.
+       1) html and body both had non-visible overflow, so body became a scroll
+          container and the sticky header stopped sticking on every screen.
+          Keep the horizontal clip on <html> only and let body be overflow:visible.
+       2) The battle top bar (log / hand / surrender buttons) scrolled away; make it sticky
+          under the app header.
+       3) Overlays positioned against the tall battle section are pinned to the viewport. */
+    :root { --app-header-h: 58px; }
+    html { height: auto !important; overflow-x: hidden !important; overflow-y: auto !important; }
+    body, body.battle-page-active { overflow: visible !important; }
+
+    body.battle-page-active > header { position: sticky; top: 0; z-index: 40; }
+    body.battle-page-active #battle-topbar {
+      position: sticky;
+      top: var(--app-header-h);
+      z-index: 35;
+    }
+
+    body.battle-page-active #battle-coin-overlay { position: fixed !important; inset: 0 !important; }
+    body.battle-page-active #battle-cutin-layer  { position: fixed !important; left: 0 !important; right: 0 !important; top: 33.333% !important; }
+    body.battle-page-active #battle-emote-bubble {
+      position: fixed !important;
+      top: calc(var(--app-header-h) + 3rem) !important;
+      right: 1rem !important;
+    }
+    body.battle-page-active #battle-log-drawer {
+      position: fixed !important;
+      top: calc(var(--app-header-h) + 3rem) !important;
+      z-index: 45 !important;
+      max-height: calc(100dvh - var(--app-header-h) - 4.5rem);
+    }
+
+    /* Energy orb is dragged with pointer events: keep the browser from taking the gesture over for scrolling. */
+    #current-energy-orb { touch-action: none; }
+  </style>
 </head>
 <body class="flex flex-col min-h-screen">
 
@@ -1396,7 +1432,7 @@
       { id: 'c_ralts', name: 'ラルトス', category: 'Pokemon', stage: 'Basic', type: 'Psychic', hp: 60, rarity: 'C', pack: 'a1_mewtwo', retreat: 1, weakness: 'Darkness', attacks: [{ name: 'ねんりき', cost: ['Psychic'], damage: 10, text: '' }] },
       { id: 'c_kirlia', name: 'キルリア', category: 'Pokemon', stage: 'Stage1', evolvesFrom: 'ラルトス', type: 'Psychic', hp: 80, rarity: 'U', pack: 'a1_mewtwo', retreat: 1, weakness: 'Darkness', attacks: [{ name: 'マジカルショット', cost: ['Psychic', 'Colorless'], damage: 30, text: '' }] },
       { id: 'c_gardevoir_ex', name: 'サーナイト', category: 'Pokemon', stage: 'Stage2', evolvesFrom: 'キルリア', type: 'Psychic', hp: 110, rarity: 'SAR', pack: 'a1_mewtwo', retreat: 2, weakness: 'Darkness', ability: { name: 'トランスシェイド', text: '自分のバトル場の超ポケモンに超エネルギーを1個つける！' }, attacks: [{ name: 'サイコショット', cost: ['Psychic', 'Psychic', 'Colorless'], damage: 60, text: '' }] },
-      { id: 'c_mega_gardevoir_ex', name: 'メガサーナイトex', category: 'Pokemon', stage: 'Stage2', evolvesFrom: 'キルリア', isEx: true, pointValue: 2, type: 'Psychic', hp: 200, rarity: 'UR', pack: 'b2_parade', retreat: 1, weakness: 'Darkness', attacks: [{ name: 'ブリリアントアロー', cost: ['Psychic', 'Psychic'], damage: 60, text: '場の超エネルギー数×30追加！' }] },
+      { id: 'c_mega_gardevoir_ex', name: 'メガサーナイトex', category: 'Pokemon', stage: 'Stage2', evolvesFrom: 'キルリア', isEx: true, pointValue: 2, type: 'Psychic', hp: 200, rarity: 'UR', pack: 'b2_parade', retreat: 1, weakness: 'Darkness', attacks: [{ name: 'ブリリアントアロー', cost: ['Psychic', 'Psychic'], damage: 60, text: '自分の場の超エネルギー数×30追加！' }] },
       { id: 'c_mewtwo_ex', name: 'ミュウツーex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Psychic', hp: 150, rarity: 'SR', pack: 'a1_mewtwo', retreat: 2, weakness: 'Darkness', attacks: [{ name: 'ねんどうだん', cost: ['Psychic', 'Colorless'], damage: 50, text: '' }, { name: 'サイコドライブ', cost: ['Psychic', 'Psychic', 'Colorless', 'Colorless'], damage: 150, text: 'このポケモンの超エネルギーを2個トラッシュ。' }] },
       { id: 'c_mega_mewtwo_x', name: 'メガミュウツーXex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Psychic', hp: 210, rarity: 'UR', pack: 'c1_mewtwo', retreat: 2, weakness: 'Darkness', attacks: [{ name: 'バニッシュストライク', cost: ['Psychic', 'Psychic', 'Colorless'], damage: 160, text: '' }] },
       { id: 'c_mew_ex', name: 'ミュウex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Psychic', hp: 130, rarity: 'SAR', pack: 'a1a_mew', retreat: 1, weakness: 'Darkness', attacks: [{ name: 'サイコレポート', cost: ['Psychic'], damage: 20, text: '' }, { name: 'ゲノムハック', cost: ['Colorless', 'Colorless', 'Colorless'], damage: 100, text: '相手のワザの力をコピーして攻撃！' }] },
@@ -1408,8 +1444,8 @@
       { id: 'c_mega_lucario_ex', name: 'メガルカリオex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Fighting', hp: 190, rarity: 'SAR', pack: 'b3_aurabeat', retreat: 1, weakness: 'Psychic', attacks: [{ name: 'しんくうはどう', cost: ['Fighting', 'Fighting'], damage: 130, text: '' }] },
       { id: 'c_koraidon_ex', name: 'コライドンex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Fighting', hp: 150, rarity: 'SAR', pack: 'b3a_paradox', retreat: 2, weakness: 'Psychic', attacks: [{ name: 'カイザークロー', cost: ['Fighting', 'Fighting', 'Colorless'], damage: 140, text: '' }] },
       { id: 'c_umbreon_vmax', name: 'ブラッキーex', category: 'Pokemon', stage: 'Stage1', evolvesFrom: 'イーブイ', isEx: true, pointValue: 2, type: 'Darkness', hp: 140, rarity: 'SAR', pack: 'a3b_eevee', retreat: 2, weakness: 'Grass', ability: { name: 'ダークシグナル', text: '相手のベンチを呼び出す！' }, attacks: [{ name: 'くろいまなざし', cost: ['Darkness', 'Colorless', 'Colorless'], damage: 90, text: '' }] },
-      { id: 'c_darkrai_vstar', name: 'ダークライex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Darkness', hp: 140, rarity: 'SR', pack: 'a2_dialga', retreat: 2, weakness: 'Grass', ability: { name: 'ナイトメアオーラ', text: '悪エネルギーをつけたとき相手に20ダメージ！' }, attacks: [{ name: 'ダークプリズム', cost: ['Darkness', 'Darkness', 'Colorless'], damage: 80, text: '' }] },
-      { id: 'c_dialga_ex', name: 'ディアルガex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Metal', hp: 150, rarity: 'UR', pack: 'a2_dialga', retreat: 2, weakness: 'Fire', attacks: [{ name: 'メタルターボ', cost: ['Metal', 'Metal'], damage: 30, text: 'ベンチに鋼エネルギーを2個つける！' }, { name: 'ヘビーインパクト', cost: ['Metal', 'Metal', 'Colorless', 'Colorless'], damage: 100, text: '' }] },
+      { id: 'c_darkrai_vstar', name: 'ダークライex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Darkness', hp: 140, rarity: 'SR', pack: 'a2_dialga', retreat: 2, weakness: 'Grass', ability: { name: 'ナイトメアオーラ', text: '悪エネルギーをつけたとき相手に20ダメージ！', passive: true }, attacks: [{ name: 'ダークプリズム', cost: ['Darkness', 'Darkness', 'Colorless'], damage: 80, text: '' }] },
+      { id: 'c_dialga_ex', name: 'ディアルガex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Metal', hp: 150, rarity: 'UR', pack: 'a2_dialga', retreat: 2, weakness: 'Fire', attacks: [{ name: 'メタルターボ', cost: ['Metal', 'Metal'], damage: 30, text: 'ベンチポケモン1匹に鋼エネルギーを2個つける！' }, { name: 'ヘビーインパクト', cost: ['Metal', 'Metal', 'Colorless', 'Colorless'], damage: 100, text: '' }] },
       { id: 'c_solgaleo_ex', name: 'ソルガレオex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Metal', hp: 150, rarity: 'UR', pack: 'a3_solgaleo', retreat: 2, weakness: 'Fire', attacks: [{ name: 'メテオドライブ', cost: ['Metal', 'Metal', 'Colorless'], damage: 120, text: '' }] },
       { id: 'c_rayquaza_vmax', name: 'レックウザex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Dragon', hp: 150, rarity: 'UR', pack: 'b4_sky', retreat: 2, weakness: 'None', attacks: [{ name: 'りゅうのはどう', cost: ['Fire', 'Lightning', 'Colorless'], damage: 130, text: '' }] },
       { id: 'c_mega_rayquaza_ex', name: 'メガレックウザex', category: 'Pokemon', stage: 'Basic', isEx: true, pointValue: 2, type: 'Dragon', hp: 210, rarity: 'UR', pack: 'b2b_shiningmega', retreat: 1, weakness: 'None', attacks: [{ name: 'エメラルドブレイク', cost: ['Fire', 'Lightning', 'Colorless'], damage: 90, text: '自分のベンチの数×40追加！' }] },
@@ -1426,7 +1462,7 @@
       { id: 't_pokeball', name: 'モンスターボール', category: 'Trainer', subType: 'Item', type: 'Trainer', rarity: 'C', pack: 'a1_pikachu', text: '自分の山札から「たねポケモン」をランダムに1枚手札に加える。' },
       { id: 't_potion', name: 'きずぐすり', category: 'Trainer', subType: 'Item', type: 'Trainer', rarity: 'C', pack: 'a1_mewtwo', text: '自分のポケモン1匹のHPを20回復する。' },
       { id: 't_x_speed', name: 'スピーダー', category: 'Trainer', subType: 'Item', type: 'Trainer', rarity: 'C', pack: 'a1_charizard', text: 'この番、バトルポケモンの「にげる」ためのエネルギーが1個少なくなる。' },
-      { id: 't_sabrina', name: 'ナツメ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SR', pack: 'a1_charizard', text: '相手のバトルポケモンをベンチポケモンと入れ替える。' },
+      { id: 't_sabrina', name: 'ナツメ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SR', pack: 'a1_charizard', text: '相手のベンチポケモンを1匹選び、バトルポケモンと入れ替える。' },
       { id: 't_giovanni', name: 'サカキ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SR', pack: 'a1_mewtwo', text: 'この番、自分のポケモンが使うワザのダメージを+10する。' },
       { id: 't_misty', name: 'カスミ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SAR', pack: 'a1_pikachu', text: '自分の水ポケモン1匹にウラが出るまでコインを投げ、オモテの数ぶん水エネルギーをつける！' },
       { id: 't_erika', name: 'エリカ', category: 'Trainer', subType: 'Supporter', type: 'Trainer', rarity: 'SR', pack: 'a1_charizard', text: '自分の草ポケモン1匹のHPを50回復する。' },
@@ -1435,6 +1471,33 @@
     ];
 
     const CARD_MAP = Object.fromEntries(CARDS.map(c => [c.id, c]));
+
+    /* v31: effects are keyed by (card id : attack name) so same-named attacks on other cards can never collide. */
+    const ATTACK_FX = {
+      'c_charizard_ex:ぐれんのあらし': 'trash2', 'c_mewtwo_ex:サイコドライブ': 'trash2',
+      'c_mega_charizard_y:クリムゾンダイブ': 'selfdmg30',
+      'c_shiny_charizard:バーニングダーク': 'opp_points',
+      'c_hooh_ex:せいなるほのお': 'bench_snipe30', 'c_lucario_ex:はどうだん': 'bench_snipe30',
+      'c_blastoise_ex:ハイドロバズーカ': 'water5',
+      'c_palkia_ex:ディメンションストーム': 'bench_all20',
+      'c_suicune_ex:オーロラゲイン': 'heal20', 'c_mega_altaria_ex:コットンガード': 'heal20',
+      'c_venusaur_ex:ジャイアントブルーム': 'heal30',
+      'c_celebi_ex:パワフルブルーム': 'energy50',
+      'c_pikachu_ex:エレキサークル': 'bench_lightning30',
+      'c_raikou_v:ライトニングロンド': 'bench20', 'c_arceus_ex:アルティメットフォース': 'bench20',
+      'c_mega_rayquaza_ex:エメラルドブレイク': 'bench40',
+      'c_mega_gardevoir_ex:ブリリアントアロー': 'psychic30',
+      'c_mew_ex:ゲノムハック': 'genome',
+      'c_dialga_ex:メタルターボ': 'metal_turbo'
+    };
+    CARDS.forEach(c => (c.attacks || []).forEach(a => { const fx = ATTACK_FX[`${c.id}:${a.name}`]; if (fx) a.fx = fx; }));
+    const ENERGY_CODE_TO_TYPE = Object.fromEntries(Object.entries(TYPE_META).map(([k, v]) => [v.code, k]));
+    /* Rule switches (flip to false to go back to the older behaviour). */
+    const RULES = {
+      SUPPORTER_ALLOWED_ON_FIRST_TURN: true,   // the first player may play a Supporter on turn 1
+      NO_EVOLVE_ON_OWN_FIRST_TURN: true,       // neither player can evolve on their own first turn
+      DECK_OUT_LOSES: true                     // a player who cannot draw at the start of their turn loses
+    };
     /* ==================== 5. 20枚構築済みデッキ（全6種） ==================== */
     const PRESET_DECKS = {
       charizard: {
@@ -2135,8 +2198,9 @@
       closeSelectModal() {
         document.getElementById('modal-select').classList.add('hidden');
         if (typeof battle !== 'undefined') {
-          if (battle.pendingRareCandy || battle.pendingGenomeAttack) {
+          if (battle.pendingRareCandy || battle.pendingGenomeAttack || battle.pendingAttackChoice || battle.pendingRetreat) {
             battle.pendingRareCandy = false; battle.pendingGenomeAttack = null;
+            battle.pendingAttackChoice = null; battle.pendingRetreat = null;
             battle.actionLocked = false; battle.render();
           }
         }
@@ -6410,7 +6474,7 @@ const PACK_CATALOG_DATA = {
         const existing = CARDS.filter(c => c.pack === packId).map(c => c.name);
         return new Set([...featured, ...existing]).size;
       },
-      openPackCards(packId, showAll = false) {
+      openPackCards(packId, showAll = false, limit = 60, keepScroll = false) {
         const pack = PACKS.find(p => p.id === packId);
         if (!pack) { ui.toast('パックが見つかりません'); return; }
         const modal = document.getElementById('modal-pack-cards');
@@ -6419,10 +6483,14 @@ const PACK_CATALOG_DATA = {
         const grid = document.getElementById('game-pack-cards-grid');
         const entry = PACK_CATALOG_DATA[packId];
         const knownPlayable = CARDS.filter(c => c.pack === packId);
-        const parseCatalogLine = line => {
+        // Lines are "number:name:rarity" (most sets) or just "number:name" (A1 / A2 / C1 lists).
+        const parseCatalogLine = rawLine => {
+          const line = String(rawLine).replace(/\r/g, '').trim();
           const first = line.indexOf(':');
           const last = line.lastIndexOf(':');
-          return { number: line.slice(0, first), name: line.slice(first + 1, last), rarity: line.slice(last + 1) };
+          if (first === -1) return { number: '', name: line, rarity: '' };
+          if (first === last) return { number: line.slice(0, first).trim(), name: line.slice(first + 1).trim(), rarity: '' };
+          return { number: line.slice(0, first).trim(), name: line.slice(first + 1, last).trim(), rarity: line.slice(last + 1).trim() };
         };
         let catalogEntries = entry ? entry.list.trim().split(/\n/).map(line => {
           const {number:num, name, rarity} = parseCatalogLine(line);
@@ -6436,11 +6504,12 @@ const PACK_CATALOG_DATA = {
         })();
         if (showAll) {
           const combined = new Map();
-          CARDS.forEach(c => combined.set('game:'+c.id,{number:'',name:c.name,playable:c,packName:PACKS.find(p=>p.id===c.pack)?.name||c.pack}));
           Object.entries(PACK_CATALOG_DATA).forEach(([pid,data]) => data.list.trim().split(/\n/).forEach(line => {
-            const {number,name,rarity}=parseCatalogLine(line); const key=pid+':'+number;
+            const {number,name,rarity}=parseCatalogLine(line); const key=(data.sourceSet||pid)+'-'+(Number(number)||number);
             if(!combined.has(key)) combined.set(key,{number,name,rarity:rarity||'',sourceSet:data.sourceSet||'',nameLanguage:data.nameLanguage||'ja',jpDetail:japaneseCardDetail(data.sourceSet,number),playable:CARDS.find(c=>c.name===name)||null,packName:PACKS.find(p=>p.id===pid)?.name||pid,verifiedName:true,partialVerified:!!data.partialVerified});
           }));
+          const shownPlayable = new Set(Array.from(combined.values()).map(x => x.playable && x.playable.id).filter(Boolean));
+          CARDS.forEach(c => { if (!shownPlayable.has(c.id)) combined.set('game:'+c.id,{number:'',name:c.name,playable:c,packName:PACKS.find(p=>p.id===c.pack)?.name||c.pack}); });
           PACKS.forEach(p => {
             if (PACK_CATALOG_DATA[p.id]) return;
             p.sub.split(/\s*\/\s*/).filter(x=>x && !/総集編/.test(x)).forEach(name => {
@@ -6452,10 +6521,11 @@ const PACK_CATALOG_DATA = {
         }
         title.textContent = showAll ? 'ゲーム内カード図鑑（収録確認分）' : `${pack.name} — 収録カード`;
         const isComplete = !!entry?.complete;
+        const allPacksVerified = PACKS.every(p => { const e = PACK_CATALOG_DATA[p.id]; return !!e && !!e.complete && e.list.trim().split(/\n/).length === e.expected; });
         const packMeta = PACK_CATALOG_META[packId] || {};
         const coverageMeta = PACK_CATALOG_META[packId] || {};
         count.textContent = showAll
-          ? `ゲーム内登録・収録確認済み ${catalogEntries.length}項目 / 全30パックの完全収録確認は未完了`
+          ? `ゲーム内登録・収録確認済み ${catalogEntries.length}項目 / ${allPacksVerified ? `全${PACKS.length}パックの収録一覧を照合済み` : `全${PACKS.length}パックの完全収録確認は未完了`}`
           : entry?.partialVerified ? `収録名・番号・レアリティ一部照合済み ${catalogEntries.length}/${packMeta.setTotal || entry.expected}項目（全件照合は未完了）`
           : isComplete ? `収録確認済み ${catalogEntries.length}項目（カード名・番号確認済み／能力データ未収録分あり）${packMeta.setTotal ? ` · セット全体 ${packMeta.setTotal}種類` : ''}`
           : `注目カード・ゲーム内登録 ${catalogEntries.length}項目（収録一覧未完成）${coverageMeta.setTotal ? ` · セット全体 ${coverageMeta.setTotal}種類` : ''}`;
@@ -6482,7 +6552,10 @@ const PACK_CATALOG_DATA = {
           const extra = d.retreatCost !== null && d.retreatCost !== undefined ? `<div><b>にげるコスト：</b>${safe(d.retreatCost)} ${retreatIcons}</div>` : '';
           return `<details class="mt-1 w-full text-left"><summary class="cursor-pointer text-[9px] font-black text-sky-700">日本語カード情報 ${summary ? '（'+safe(summary)+'）' : ''}</summary><div class="mt-1 rounded-lg bg-sky-50 border border-sky-100 p-2 text-[9px] leading-relaxed text-slate-700 break-words">${rows || '詳細データは参照元ページで確認してください。'}${extra}<div class="mt-1 text-[8px] text-slate-500">出典はコミュニティ提供データです。公式情報と照合する場合は参照元も確認してください。</div></div><a class="mt-1 inline-block text-[9px] text-sky-700 underline" href="${d.sourceUrl||'#'}" target="_blank" rel="noopener noreferrer">日本語のカード詳細を見る ↗</a></details>`;
         };
-        grid.innerHTML = toggle + languageNote + status + catalogEntries.map((c,idx) => {
+        const remaining = catalogEntries.length - limit;
+        const moreButton = remaining > 0 ? `<button type="button" onclick="packSystem.openPackCards('${packId}',${showAll},${limit + 60},true)" class="col-span-full mt-1 px-3 py-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-black text-xs">さらに表示（残り${remaining}件）</button>` : '';
+        const prevScroll = grid.scrollTop;
+        grid.innerHTML = toggle + languageNote + status + catalogEntries.slice(0, limit).map((c,idx) => {
           if (c.playable) {
             const card=c.playable;
             const jpUrl = japaneseCardReferenceUrl(c.sourceSet, c.number);
@@ -6494,16 +6567,25 @@ const PACK_CATALOG_DATA = {
           const jpLink = jpUrl ? `<a class="mt-1 inline-block text-[9px] font-black text-sky-700 underline" href="${jpUrl}" target="_blank" rel="noopener noreferrer">日本語カード名・HP・ワザ・効果を確認 ↗</a>` : '';
           const setCode = String(c.sourceSet||'A1').trim();
           const imageNum = String(c.number||'').padStart(3,'0');
-          const imageUrl = c.number ? (EMBEDDED_CARD_IMAGES[`${setCode}-${Number(c.number)}`] || '') : '';
+          const imageKey = c.number && EMBEDDED_CARD_IMAGES[`${setCode}-${Number(c.number)}`] ? `${setCode}-${Number(c.number)}` : '';
           const japaneseImageSource = c.number && c.sourceSet ? `https://game.pokemontcgpocket.app/ja/tcgp/${encodeURIComponent(setCode)}/${imageNum}/high.webp` : '';
           const japaneseImageUrl = japaneseImageSource ? `https://www.pokemontcgpocket.app/_next/image?q=75&url=${encodeURIComponent(japaneseImageSource)}&w=3840` : '';
           const displayName = c.jpDetail?.nameJa || c.name;
           const artFallback = `<div class="aspect-[3/4] rounded-lg bg-gradient-to-br from-slate-100 via-white to-slate-200 border border-slate-200 flex flex-col items-center justify-center p-2 text-center"><div class="text-[10px] font-black text-slate-400">${number}</div><div class="text-2xl my-1">${/ex|メガ/i.test(displayName)?'⭐':'🎴'}</div><div class="text-[9px] text-slate-400 mt-1">${c.jpDetail?'日本語データ照合済み':'日本語名表示'}</div></div>`;
-          const cardArt = (japaneseImageUrl || imageUrl) ? `<img src="${japaneseImageUrl || imageUrl}" data-fallback="${imageUrl}" alt="${safe(displayName)} ${number}" loading="lazy" class="w-full rounded-lg object-contain bg-slate-50" onerror="if(this.dataset.fallback && this.src!==this.dataset.fallback){this.src=this.dataset.fallback;}else{this.style.display='none';this.nextElementSibling.style.display='flex';}">${artFallback.replace('flex flex-col','hidden flex-col')}` : artFallback;
+          const cardArt = (japaneseImageUrl || imageKey) ? `<img src="${japaneseImageUrl || EMBEDDED_CARD_IMAGES[imageKey]}" data-fb="${imageKey}" alt="${safe(displayName)} ${number}" loading="lazy" class="w-full rounded-lg object-contain bg-slate-50" onerror="packSystem.imgFallback(this)">${artFallback.replace('flex flex-col','hidden flex-col')}` : artFallback;
           return `<div class="flex flex-col rounded-xl border border-slate-200 bg-white p-2 min-w-0 shadow-sm">${cardArt}<div class="mt-1 text-sm font-black text-slate-900 text-center break-words">${safe(displayName)}</div><div class="mt-1 text-[10px] text-slate-500 font-bold text-center">${c.verifiedName?(c.partialVerified?'収録名・番号照合済み':'収録名確認済み'):c.featured?'注目カード（未照合）':'ゲーム内登録名'}${c.rarity?` ・ レアリティ ${safe(c.rarity)}`:' ・ レアリティ未登録'}</div>${jpDetailHtml(c.jpDetail)}${jpLink}</div>`;
-        }).join('');
+        }).join('') + moreButton;
+        grid.scrollTop = keepScroll ? prevScroll : 0;
       },
       closePackCards() { document.getElementById('modal-pack-cards').classList.add('hidden'); },
+
+      // Remote image failed: try the built-in copy once (looked up lazily), then fall back to the placeholder.
+      imgFallback(img) {
+        const emb = img.dataset.fb ? EMBEDDED_CARD_IMAGES[img.dataset.fb] : '';
+        if (emb && !img.dataset.fbTried) { img.dataset.fbTried = '1'; img.src = emb; return; }
+        img.style.display = 'none';
+        if (img.nextElementSibling) img.nextElementSibling.style.display = 'flex';
+      },
 
       setSeriesFilter(s) {
         this.seriesFilter = s;
@@ -6599,6 +6681,8 @@ const PACK_CATALOG_DATA = {
           return;
         }
         this.executingOpen = true;
+        const backup = { hourglass: accountMgr.data.hourglass, packPoints: accountMgr.data.packPoints || 0, collection: { ...accountMgr.data.collection } };
+        try {
         accountMgr.data.hourglass -= cost;
         accountMgr.data.packPoints = (accountMgr.data.packPoints || 0) + count * 15;
         const packMeta = PACKS.find(p => p.id === packId);
@@ -6630,7 +6714,7 @@ const PACK_CATALOG_DATA = {
           } else if (featuredCard && roll < 0.35) pool = [featuredCard];
           else if (roll < 0.55) pool = rarePool.filter(c => ['UR', 'SAR'].includes(c.rarity));
           else if (roll < 0.85) pool = rarePool.filter(c => ['SR', 'RR'].includes(c.rarity));
-          if (pool.length === 0) pool = allRare;
+          if (pool.length === 0) pool = rarePool;   // stay inside this pack (was: any rare card in the game)
           const rc = pool[Math.floor(Math.random() * pool.length)];
           const isNew = (accountMgr.data.collection[rc.id] || 0) === 0;
           pulled.push({ card: rc, isNew, order: pulled.length });
@@ -6647,7 +6731,15 @@ const PACK_CATALOG_DATA = {
         document.getElementById('pack-ten-stage').classList.add('hidden');
         document.getElementById('pack-results').classList.remove('hidden');
         this.renderPulled(pulled);
-        this.executingOpen = false;
+        } catch (err) {
+          console.error(err);
+          Object.assign(accountMgr.data, backup);
+          accountMgr.saveCurrent();
+          ui.toast('開封中にエラーが発生しました。砂時計は消費されていません');
+          this.resetStage();
+        } finally {
+          this.executingOpen = false;
+        }
       },
 
       sortResults(mode) {
@@ -7041,6 +7133,7 @@ const PACK_CATALOG_DATA = {
       localBoardRevision: 0, remoteBoardRevision: 0,
       resolvingAttackSide: null, sessionId: 0,
       pendingRareCandy: false, pendingGenomeAttack: null,
+      pendingAttackChoice: null, pendingRetreat: null,
       emoteTimer: null, cutinTimer: null,
 
       shuffle(arr) {
@@ -7091,6 +7184,11 @@ const PACK_CATALOG_DATA = {
         });
         window.addEventListener('pointermove', e => moveDrag(e.clientX, e.clientY));
         window.addEventListener('pointerup', e => endDrag(e.clientX, e.clientY));
+        window.addEventListener('pointercancel', () => {
+          if (!this.draggingEnergy) return;
+          this.draggingEnergy = false;
+          if (this.ghostEl) { this.ghostEl.remove(); this.ghostEl = null; }
+        });
       },
 
       async playCoinTossSequence(title, sub, results) {
@@ -7123,7 +7221,7 @@ const PACK_CATALOG_DATA = {
 
       createInst(cardId, turnPlayed = 0) {
         const b = CARD_MAP[cardId];
-        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [] };
+        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], under: [] };
       },
 
       pickRandomEnergy(types) {
@@ -7163,6 +7261,7 @@ const PACK_CATALOG_DATA = {
         this.localBoardRevision = 0; this.remoteBoardRevision = 0;
         this.pendingPromotionNext = null; this.pendingRemotePassTurn = false;
         this.resolvingAttackSide = null; this.pendingRareCandy = false; this.pendingGenomeAttack = null;
+        this.pendingAttackChoice = null; this.pendingRetreat = null;
         this.mode = cfg.mode || 'cpu';
         this.isOnlineP2P = !!cfg.isOnlineP2P;
         this.oppRating = cfg.oppRating || 1000;
@@ -7235,10 +7334,12 @@ const PACK_CATALOG_DATA = {
         const turnPlayed = Number(inst.turnPlayed);
         if (!Number.isFinite(maxHp) || maxHp !== Number(card.hp) || !Number.isFinite(hp) || hp < 0 || hp > maxHp || !Number.isInteger(turnPlayed) || turnPlayed < 0 || turnPlayed > 100000) return null;
         if (!Array.isArray(inst.energies) || inst.energies.length > 100 || inst.energies.some(t => !ENERGY_TYPES.includes(t))) return null;
+        const under = Array.isArray(inst.under) ? inst.under : [];
+        if (under.length > 2 || under.some(id => typeof id !== 'string' || !CARD_MAP[id])) return null;
         return {
           cardId: inst.cardId, hp: Math.floor(hp), maxHp: Math.floor(maxHp),
           energies: [...inst.energies], turnPlayed,
-          abilityUsed: !!inst.abilityUsed, status: null, statusEffects: []
+          abilityUsed: !!inst.abilityUsed, status: null, statusEffects: [], under: [...under]
         };
       },
 
@@ -7495,6 +7596,12 @@ const PACK_CATALOG_DATA = {
         if (s.active) s.active.abilityUsed = false;
         s.bench.forEach(b => { b.abilityUsed = false; });
 
+        if (RULES.DECK_OUT_LOSES && s.deck.length === 0) {
+          this.log(side === 'player' ? '山札が0枚で引けません…' : '相手は山札が0枚で引けません！');
+          this.endMatch(side === 'player' ? 'opp' : 'player', side === 'player' ? '山札が尽きて引けませんでした。' : '相手の山札が尽きました！');
+          return;
+        }
+
         this.drawCards(side, 1);
 
         const isVeryFirstTurn = (this.turn === 1 && ((side === 'player' && this.isFirstTurnPlayer) || (side === 'opp' && !this.isFirstTurnPlayer)));
@@ -7559,30 +7666,44 @@ const PACK_CATALOG_DATA = {
         sound.energy();
         battleVfx.triggerBurst('player', TYPE_META[eType].c1, '#fde047');
 
-        if (CARD_MAP[t.cardId].id === 'c_darkrai_vstar' && eType === 'Darkness' && this.o.active) {
-          this.o.active.hp -= 20;
-          this.showDmg('opp-active', 20);
-          this.log('ダークライexの特性「ナイトメアオーラ」！相手に20ダメージ！');
-          const wasKO = this.checkKO('opp', 'active', 0);
-          if (wasKO) {
-            this.render();
-            if (this.isOnlineP2P) this.syncToPeer(false);
-            return;
-          }
-        } else {
-          this.log(`${CARD_MAP[t.cardId].name}に${TYPE_META[eType].code}エネルギーをつけた！`);
+        this.log(`${CARD_MAP[t.cardId].name}に${TYPE_META[eType].code}エネルギーをつけた！`);
+        if (this.nightmareAura('player', t, eType)) {
+          this.render();
+          if (this.isOnlineP2P) this.syncToPeer(false);
+          return;
         }
         this.render();
         if (this.isOnlineP2P) this.syncToPeer(false);
+      },
+
+      // Darkrai ex passive: attaching a Darkness Energy to it deals 20 damage to the opponent's Active. Returns true if that KO'd.
+      nightmareAura(side, inst, eType) {
+        if (!inst || CARD_MAP[inst.cardId]?.id !== 'c_darkrai_vstar' || eType !== 'Darkness') return false;
+        const opp = side === 'player' ? this.o : this.p;
+        if (!opp.active) return false;
+        const oppSide = side === 'player' ? 'opp' : 'player';
+        opp.active.hp -= 20;
+        this.showDmg(`${oppSide}-active`, 20);
+        this.log('ダークライexの特性「ナイトメアオーラ」！相手に20ダメージ！');
+        return this.checkKO(oppSide, 'active', 0);
       },
 
       isFirstTurnFor(side) {
         return this.turn === 1 && ((side === 'player' && this.isFirstTurnPlayer) || (side === 'opp' && !this.isFirstTurnPlayer));
       },
 
+      isOwnFirstTurn(side) {
+        const wentFirst = (side === 'player') === this.isFirstTurnPlayer;
+        return wentFirst ? this.turn === 1 : this.turn === 2;
+      },
+
+      canEvolveNow(side) {
+        return !(RULES.NO_EVOLVE_ON_OWN_FIRST_TURN && this.isOwnFirstTurn(side));
+      },
+
       canUseSupporter(side) {
         const board = side === 'player' ? this.p : this.o;
-        return !!board && !board.supporterUsed && !this.isFirstTurnFor(side);
+        return !!board && !board.supporterUsed && (RULES.SUPPORTER_ALLOWED_ON_FIRST_TURN || !this.isFirstTurnFor(side));
       },
 
       isPlayable(id) {
@@ -7592,7 +7713,7 @@ const PACK_CATALOG_DATA = {
         if (this.currentSide !== 'player') return false;
         if (c.category === 'Pokemon') {
           if (c.stage === 'Basic') return this.p.bench.length < 3;
-          return [this.p.active, ...this.p.bench].filter(Boolean).some(p => CARD_MAP[p.cardId].name === c.evolvesFrom && p.turnPlayed < this.turn);
+          return this.canEvolveNow('player') && [this.p.active, ...this.p.bench].filter(Boolean).some(p => CARD_MAP[p.cardId].name === c.evolvesFrom && p.turnPlayed < this.turn);
         }
         if (c.category === 'Trainer') return c.subType === 'Supporter' ? this.canUseSupporter('player') : true;
         return false;
@@ -7625,6 +7746,7 @@ const PACK_CATALOG_DATA = {
             this.log(`${c.name}をベンチに出した！`); this.render();
             if (this.isOnlineP2P) this.syncToPeer(false);
           } else {
+            if (!this.canEvolveNow('player')) { ui.toast('最初のターンは進化できません'); return; }
             const cands = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))].filter(t => t.inst && CARD_MAP[t.inst.cardId].name === c.evolvesFrom && t.inst.turnPlayed < this.turn);
             if (cands.length === 0) { ui.toast(`進化元「${c.evolvesFrom}」が場にいないか出したばかりです`); return; }
             ui.openSelectModal(`${c.name} に進化するポケモンを選択`, cands.map(t => `<div onclick="battle.evolve(${idx},'${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-emerald-700 mt-1">進化する</span></div>`).join(''));
@@ -7633,7 +7755,7 @@ const PACK_CATALOG_DATA = {
         }
 
         if (c.category === 'Trainer') {
-          if (c.subType === 'Supporter' && !this.canUseSupporter('player')) { ui.toast('サポートは1ターンに1枚（先攻1ターン目不可）です'); return; }
+          if (c.subType === 'Supporter' && !this.canUseSupporter('player')) { ui.toast('サポートは1ターンに1枚までです'); return; }
           this.execTrainer('player', idx);
         }
       },
@@ -7642,6 +7764,7 @@ const PACK_CATALOG_DATA = {
 
       evolveCard(side, hIdx, z, i, allowRareCandy = false, deferRenderAndSync = false) {
         const board = side === 'player' ? this.p : this.o;
+        if (!this.canEvolveNow(side)) return false;
         const evoId = board.hand[hIdx], evoC = CARD_MAP[evoId];
         const t = z === 'active' ? board.active : board.bench[i];
         if (!evoC || !t || evoC.category !== 'Pokemon' || evoC.stage === 'Basic') return false;
@@ -7654,7 +7777,7 @@ const PACK_CATALOG_DATA = {
         if (!directLine && !rareCandyLine) return false;
         board.hand.splice(hIdx, 1);
         const dmg = t.maxHp - t.hp;
-        t.cardId = evoId; t.maxHp = evoC.hp; t.hp = Math.max(10, evoC.hp - dmg); t.turnPlayed = this.turn; t.abilityUsed = false;
+        t.under = [...(t.under || []), t.cardId]; t.cardId = evoId; t.maxHp = evoC.hp; t.hp = Math.max(10, evoC.hp - dmg); t.turnPlayed = this.turn; t.abilityUsed = false;
         t.status = null; t.statusEffects = []; t.temporaryFlags = {};
         sound.rarePull(); battleVfx.triggerBurst(side, '#0ea5e9', '#a855f7');
         this.showCutin('EVOLUTION!', `${evoC.name} に進化！`);
@@ -7667,6 +7790,7 @@ const PACK_CATALOG_DATA = {
       },
 
       getRareCandyOptions(side) {
+        if (!this.canEvolveNow(side)) return [];
         const board = side === 'player' ? this.p : this.o;
         const field = [{ z: 'active', i: 0, inst: board.active }, ...board.bench.map((inst, i) => ({ z: 'bench', i, inst }))]
           .filter(t => t.inst && CARD_MAP[t.inst.cardId]?.stage === 'Basic' && t.inst.turnPlayed < this.turn);
@@ -7716,7 +7840,7 @@ const PACK_CATALOG_DATA = {
         const target = z === 'active' ? board.active : board.bench[i];
         if (!target || CARD_MAP[target.cardId]?.type !== 'Water') return;
         const results = [];
-        while (results.length < 6) {
+        while (results.length < 40) {
           const heads = Math.random() < 0.5;
           results.push(heads);
           if (!heads) break;
@@ -7814,9 +7938,13 @@ const PACK_CATALOG_DATA = {
         else if (c.id === 't_giovanni') { s.dmgBonus += 10; this.showCutin('SUPPORTER', 'サカキ：ワザダメージ +10！'); this.log('サカキ！この番のワザのダメージ+10！'); }
         else if (c.id === 't_sabrina') {
           if (opp.bench.length > 0 && opp.active) {
-            const old = opp.active; opp.active = opp.bench.shift(); opp.bench.push(old);
-            this.showCutin('SUPPORTER', 'ナツメ：バトルポケモン交代！');
-            this.log('ナツメの効果でバトルポケモンを入れ替えた！');
+            if (side === 'player' && opp.bench.length > 1) {
+              const html = opp.bench.map((b, bi) => `<div onclick="battle.resolveSabrina('player',${bi});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-purple-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${b.hp}/${b.maxHp}</span></div>`).join('');
+              ui.openSelectModal('ナツメ：バトル場に出す相手のベンチを選択', html, false);
+              return;
+            }
+            this.resolveSabrina(side, side === 'player' ? 0 : this.chooseGustIndex(side));
+            return;
           } else this.log('ナツメを使ったが相手ベンチがいなかった');
         }
         else if (c.id === 't_misty') {
@@ -7859,6 +7987,46 @@ const PACK_CATALOG_DATA = {
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
+      resolveSabrina(side, benchIndex) {
+        const opp = side === 'player' ? this.o : this.p;
+        const target = opp.bench[benchIndex];
+        if (!target || !opp.active) { this.render(); return; }
+        const old = opp.active;
+        opp.active = target; opp.bench[benchIndex] = old;
+        this.showCutin('SUPPORTER', 'ナツメ：バトルポケモン交代！');
+        this.log(`ナツメの効果で相手の${CARD_MAP[target.cardId].name}をバトル場に出した！`);
+        this.render();
+        if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
+      },
+
+      // CPU helper: which of the opponent's benched Pokemon to pull up (prefers one we can KO, else the weakest)
+      chooseGustIndex(side) {
+        const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
+        let best = 0, bestScore = -Infinity;
+        opp.bench.forEach((b, bi) => {
+          let score = -b.hp;
+          if (s.active && (CARD_MAP[s.active.cardId].attacks || []).some(a => this.canPay(s.active, a.cost) && this.calcDamagePreview(s.active, a, b, side).final >= b.hp)) {
+            score += 1000 + (CARD_MAP[b.cardId].pointValue || 1) * 50;
+          }
+          if (score > bestScore) { bestScore = score; best = bi; }
+        });
+        return best;
+      },
+
+      // CPU helper: best target for "N damage to 1 Pokemon" effects
+      chooseSnipeTarget(side, dmg, includeActive = true) {
+        const opp = side === 'player' ? this.o : this.p;
+        const cands = [...(includeActive && opp.active ? [{ z: 'active', i: 0, inst: opp.active }] : []), ...opp.bench.map((b, bi) => ({ z: 'bench', i: bi, inst: b }))];
+        if (!cands.length) return null;
+        let best = cands[0], bestScore = -Infinity;
+        for (const t of cands) {
+          let score = -t.inst.hp + (t.z === 'active' ? 5 : 0);
+          if (t.inst.hp <= dmg) score += 1000 + (CARD_MAP[t.inst.cardId].pointValue || 1) * 50;
+          if (score > bestScore) { bestScore = score; best = t; }
+        }
+        return best;
+      },
+
       healTarget(side, z, i, amount) {
         const s = side === 'player' ? this.p : this.o;
         const t = z === 'active' ? s.active : s.bench[i];
@@ -7882,17 +8050,17 @@ const PACK_CATALOG_DATA = {
       calcDamagePreview(attInst, atk, defInst, side) {
         const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
         const attC = CARD_MAP[attInst.cardId], defC = CARD_MAP[defInst.cardId];
-        let dmg = atk.damage + (s.dmgBonus || 0);
-        if (atk.name === 'エレキサークル') dmg = s.bench.filter(b => CARD_MAP[b.cardId].type === 'Lightning').length * 30 + (s.dmgBonus || 0);
-        if (atk.name === 'アルティメットフォース') dmg += s.bench.length * 20;
-        if (atk.name === 'ライトニングロンド') dmg += s.bench.length * 20;
-        if (atk.name === 'エメラルドブレイク') dmg += s.bench.length * 40;
-        if (atk.name === 'パワフルブルーム') dmg = attInst.energies.length * 50 + (s.dmgBonus || 0);
-        if (atk.name === 'バーニングダーク') dmg += opp.points * 30;
-        if (atk.name === 'ハイドロバズーカ' && attInst.energies.filter(e => e === 'Water').length >= 5) dmg += 60;
-        if (atk.name === 'ブリリアントアロー') {
-          const allP = [s.active, ...s.bench, opp.active, ...opp.bench].filter(Boolean);
-          dmg += allP.reduce((acc, p) => acc + p.energies.filter(e => e === 'Psychic').length, 0) * 30;
+        const bonus = s.dmgBonus || 0;
+        let dmg = atk.damage + bonus;
+        switch (atk.fx) {
+          case 'bench_lightning30': dmg = s.bench.filter(b => CARD_MAP[b.cardId].type === 'Lightning').length * 30 + bonus; break;
+          case 'bench20': dmg += s.bench.length * 20; break;
+          case 'bench40': dmg += s.bench.length * 40; break;
+          case 'energy50': dmg = attInst.energies.length * 50 + bonus; break;
+          case 'opp_points': dmg += opp.points * 30; break;
+          case 'water5': if (attInst.energies.filter(e => e === 'Water').length >= 5) dmg += 60; break;
+          case 'psychic30': // only the attacker's own Psychic Energy counts
+            dmg += [s.active, ...s.bench].filter(Boolean).reduce((acc, p) => acc + p.energies.filter(e => e === 'Psychic').length, 0) * 30; break;
         }
         const isWeak = defC.weakness && defC.weakness !== 'None' && defC.weakness === attC.type && dmg > 0;
         if (isWeak) dmg += 20;
@@ -7981,21 +8149,37 @@ const PACK_CATALOG_DATA = {
             ui.openSelectModal('ブラッキーex：相手のベンチを選択', html);
             return;
           }
-          this.resolveDarkSignal(side, z, i, 0);
+          this.resolveDarkSignal(side, z, i, this.chooseGustIndex(side));
           return;
         }
 
+        if (c.ability.passive) { if (side === 'player') ui.toast(`「${c.ability.name}」は自動で発動する特性です`); return; }
+
+        if (c.id === 'c_greninja_ex') {
+          const targets = [{ z: 'active', i: 0, inst: opp.active }, ...opp.bench.map((b, bi) => ({ z: 'bench', i: bi, inst: b }))].filter(t => t.inst);
+          if (!targets.length) { if (side === 'player') ui.toast('ダメージを与える相手がいません'); return; }
+          if (side === 'player') {
+            const html = targets.map(t => `<div onclick="battle.resolveGreninjaAbility('player','${z}',${i},'${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-slate-700 mt-1">${t.z === 'active' ? 'バトル場' : 'ベンチ'} HP ${t.inst.hp}</span></div>`).join('');
+            ui.openSelectModal('ゲッコウガex：20ダメージを与えるポケモンを選択', html);
+            return;
+          }
+          const pick = this.chooseSnipeTarget(side, 20, true);
+          if (pick) this.resolveGreninjaAbility(side, z, i, pick.z, pick.i);
+          return;
+        }
+
+        // Anything below must have its preconditions checked BEFORE the ability is spent.
+        if (c.id === 'c_gardevoir_ex' && !(board.active && CARD_MAP[board.active.cardId].type === 'Psychic')) {
+          if (side === 'player') ui.toast('バトル場に超タイプのポケモンがいません');
+          return;
+        }
+        const KNOWN_SIMPLE = ['c_gardevoir_ex', 'c_shiny_charizard', 'c_giratina_vstar', 'c_bibarel', 'c_raikou_v', 'c_arceus_ex'];
+        if (!KNOWN_SIMPLE.includes(c.id)) { if (side === 'player') ui.toast('この特性はまだ使えません'); return; }
+
         inst.abilityUsed = true; sound.energy(); battleVfx.triggerBurst(side);
-        if (c.id === 'c_gardevoir_ex' && board.active && CARD_MAP[board.active.cardId].type === 'Psychic') {
+        if (c.id === 'c_gardevoir_ex') {
           board.active.energies.push('Psychic');
           this.log('サーナイトの「トランスシェイド」！バトル場に超エネルギー+1！');
-        } else if (c.id === 'c_greninja_ex' && opp.active) {
-          opp.active.hp -= 20; this.showDmg(side === 'player' ? 'opp-active' : 'player-active', 20);
-          this.log('ゲッコウガexの「みずしゅりけん」！相手に20ダメージ！');
-          const wasKO = this.checkKO(side === 'player' ? 'opp' : 'player', 'active', 0);
-          this.render();
-          if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
-          if (wasKO) return;
         } else if (c.id === 'c_shiny_charizard') {
           inst.energies.push('Fire', 'Fire');
           this.log('色違いリザードンexの「れんごくしはい」！炎エネルギーを2個つけた！');
@@ -8013,6 +8197,32 @@ const PACK_CATALOG_DATA = {
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
+
+      resolveGreninjaAbility(side, sourceZ, sourceI, tz, ti) {
+        const board = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
+        const source = sourceZ === 'active' ? board.active : board.bench[sourceI];
+        const target = tz === 'active' ? opp.active : opp.bench[ti];
+        if (this.over || !source || source.cardId !== 'c_greninja_ex' || source.abilityUsed || !target) return;
+        source.abilityUsed = true; sound.energy(); battleVfx.triggerBurst(side);
+        const oppSide = side === 'player' ? 'opp' : 'player';
+        target.hp -= 20;
+        this.showDmg(tz === 'active' ? `${oppSide}-active` : `${oppSide}-bench`, 20);
+        this.log(`ゲッコウガexの「みずしゅりけん」！相手の${CARD_MAP[target.cardId].name}に20ダメージ！`);
+        const wasKO = this.checkKO(oppSide, tz, ti, tz === 'bench');
+        this.render();
+        if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
+        return wasKO;
+      },
+
+      resolveAttackChoice(benchIdx) {
+        const pend = this.pendingAttackChoice;
+        if (!pend || pend.session !== this.sessionId) return;
+        this.pendingAttackChoice = null;
+        this.actionLocked = false;
+        this.render();
+        this.attack(pend.side, pend.atkIdx, pend.copiedAttackIdx, { bench: benchIdx });
+      },
+
       resolveGenomeHack(side, atkIdx, copiedAttackIdx) {
         if (!this.pendingGenomeAttack || this.pendingGenomeAttack.session !== this.sessionId) return;
         this.pendingGenomeAttack = null;
@@ -8021,7 +8231,7 @@ const PACK_CATALOG_DATA = {
         this.attack(side, atkIdx, copiedAttackIdx);
       },
 
-      attack(side, atkIdx, copiedAttackIdx = null) {
+      attack(side, atkIdx, copiedAttackIdx = null, choice = null) {
         if (this.over || this.actionLocked || this.phase !== 'play' || this.pendingSelfKO) return;
         if (side === 'player' && this.currentSide !== 'player') return;
         if (this.isFirstTurnFor(side)) {
@@ -8034,13 +8244,13 @@ const PACK_CATALOG_DATA = {
         const attC = CARD_MAP[s.active.cardId];
         const declaredAtk = attC.attacks[atkIdx];
         if (!declaredAtk) return;
-        const isGenomeHack = attC.id === 'c_mew_ex' && declaredAtk.name === 'ゲノムハック';
+        const isGenomeHack = declaredAtk.fx === 'genome';
         if (!this.canPay(s.active, declaredAtk.cost)) { if (side === 'player') ui.toast('エネルギーが足りません！'); return; }
 
         let atk = declaredAtk;
         if (isGenomeHack && copiedAttackIdx === null) {
           const targetCard = CARD_MAP[opp.active.cardId];
-          const copies = (targetCard.attacks || []).map((copy, i) => ({ copy, i })).filter(x => x.copy.name !== 'ゲノムハック');
+          const copies = (targetCard.attacks || []).map((copy, i) => ({ copy, i })).filter(x => x.copy.fx !== 'genome');
           if (!copies.length) { if (side === 'player') ui.toast('コピーできる相手のワザがありません'); return; }
           if (side === 'player') {
             this.pendingGenomeAttack = { session: this.sessionId, side, atkIdx };
@@ -8059,23 +8269,48 @@ const PACK_CATALOG_DATA = {
         }
         if (isGenomeHack) {
           atk = (CARD_MAP[opp.active.cardId].attacks || [])[copiedAttackIdx];
-          if (!atk || atk.name === 'ゲノムハック') return;
+          if (!atk || atk.fx === 'genome') return;
+        }
+
+        // Attacks that need a bench target: the player picks it, the CPU chooses automatically.
+        const pickKind = atk.fx === 'bench_snipe30' ? 'oppBench' : atk.fx === 'metal_turbo' ? 'ownBench' : null;
+        if (pickKind && !choice) {
+          const list = pickKind === 'oppBench' ? opp.bench : s.bench;
+          if (list.length === 0) choice = { bench: -1 };
+          else if (list.length === 1) choice = { bench: 0 };
+          else if (side === 'player') {
+            this.pendingAttackChoice = { session: this.sessionId, side, atkIdx, copiedAttackIdx };
+            this.actionLocked = true;
+            const html = list.map((b, bi) => `<div onclick="battle.resolveAttackChoice(${bi});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${b.hp}/${b.maxHp}・エネ${b.energies.length}</span></div>`).join('');
+            this.render();
+            ui.openSelectModal(pickKind === 'oppBench' ? `${atk.name}：30ダメージを与える相手のベンチを選択` : `${atk.name}：鋼エネルギーを2個つけるベンチを選択`, html, true);
+            return;
+          } else if (pickKind === 'oppBench') {
+            choice = { bench: this.chooseSnipeTarget(side, 30, false)?.i ?? -1 };
+          } else {
+            const mi = s.bench.findIndex(b => CARD_MAP[b.cardId].type === 'Metal');
+            choice = { bench: mi >= 0 ? mi : 0 };
+          }
         }
 
         const prev = this.calcDamagePreview(s.active, atk, opp.active, side);
         const dmg = prev.final;
         this.resolvingAttackSide = side;
 
-        if (atk.text?.includes('エネルギーを2個トラッシュ')) {
-          const eT = attC.type;
-          for (let k = 0; k < 2; k++) { const ei = s.active.energies.indexOf(eT); if (ei !== -1) s.active.energies.splice(ei, 1); }
+        if (atk.fx === 'trash2') {
+          // discard the Energy type/number named in the attack text (matters when Genome Hack copies it)
+          const m = (atk.text || '').match(/このポケモンの(.)エネルギーを(\d+)個トラッシュ/);
+          const eT = (m && ENERGY_CODE_TO_TYPE[m[1]]) || attC.type;
+          const n = m ? Number(m[2]) : 2;
+          for (let k = 0; k < n; k++) { const ei = s.active.energies.indexOf(eT); if (ei !== -1) s.active.energies.splice(ei, 1); }
         }
-        if (atk.name === 'メタルターボ') {
-          s.bench.forEach((b, bi) => { if (bi < 2) b.energies.push('Metal'); });
+        if (atk.fx === 'metal_turbo' && choice && choice.bench >= 0 && s.bench[choice.bench]) {
+          s.bench[choice.bench].energies.push('Metal', 'Metal');
+          this.log(`${CARD_MAP[s.bench[choice.bench].cardId].name}に鋼エネルギーを2個つけた！`);
         }
-        if (atk.name === 'ジャイアントブルーム') s.active.hp = Math.min(s.active.maxHp, s.active.hp + 30);
-        if (atk.name === 'オーロラゲイン' || atk.name === 'コットンガード') s.active.hp = Math.min(s.active.maxHp, s.active.hp + 20);
-        const selfDamageAttack = atk.name === 'クリムゾンダイブ';
+        if (atk.fx === 'heal30') s.active.hp = Math.min(s.active.maxHp, s.active.hp + 30);
+        if (atk.fx === 'heal20') s.active.hp = Math.min(s.active.maxHp, s.active.hp + 20);
+        const selfDamageAttack = atk.fx === 'selfdmg30';
         if (selfDamageAttack) s.active.hp -= 30;
 
         const attEl = document.getElementById(side === 'player' ? 'player-active' : 'opp-active');
@@ -8090,9 +8325,14 @@ const PACK_CATALOG_DATA = {
         this.showDmg(side === 'player' ? 'opp-active' : 'player-active', dmg, prev.isWeak);
         this.log(`${attC.name}の「${isGenomeHack ? 'ゲノムハック（' + atk.name + '）' : atk.name}」！${defendingCardName}に${dmg}ダメージ！${prev.isWeak ? '（弱点+20！）' : ''}`);
 
-        if (atk.name === 'ディメンションストーム') opp.bench.forEach(b => { b.hp -= 20; });
-        if (atk.name === 'せいなるほのお' && opp.bench.length > 0) opp.bench[0].hp -= 30;
-        if (atk.name === 'はどうだん' && opp.bench.length > 0) opp.bench[0].hp -= 30;
+        if (atk.fx === 'bench_all20' && opp.bench.length) {
+          opp.bench.forEach(b => { b.hp -= 20; });
+          this.log('相手のベンチ全員にも20ダメージ！');
+        }
+        if (atk.fx === 'bench_snipe30' && choice && choice.bench >= 0 && opp.bench[choice.bench]) {
+          opp.bench[choice.bench].hp -= 30;
+          this.log(`相手の${CARD_MAP[opp.bench[choice.bench].cardId].name}にも30ダメージ！`);
+        }
 
         for (let bi = opp.bench.length - 1; bi >= 0; bi--) {
           if (opp.bench[bi].hp <= 0) this.checkKO(side === 'player' ? 'opp' : 'player', 'bench', bi, true);
@@ -8136,6 +8376,7 @@ const PACK_CATALOG_DATA = {
       },
 
       checkKO(defSide, z, i, isBench = false) {
+        if (this.over) return false;
         const def = defSide === 'player' ? this.p : this.o;
         const att = defSide === 'player' ? this.o : this.p;
         const inst = z === 'active' ? def.active : def.bench[i];
@@ -8143,7 +8384,7 @@ const PACK_CATALOG_DATA = {
 
         const c = CARD_MAP[inst.cardId];
         const pts = c.pointValue || (c.isEx ? 2 : 1);
-        def.discard.push(inst.cardId);
+        def.discard.push(...(inst.under || []), inst.cardId);
         att.points = Math.min(3, att.points + pts);
         this.log(`${c.name}はきぜつ！（${att.name}に ${pts}ポイント！）`);
 
@@ -8227,12 +8468,51 @@ const PACK_CATALOG_DATA = {
         }
         const cost = Math.max(0, (CARD_MAP[this.p.active.cardId].retreat || 0) - this.p.retreatDiscount);
         if (this.p.active.energies.length < cost) { ui.toast(`にげるエネルギーが足りません (必要:${cost}個)`); return; }
-        ui.openSelectModal(`にげる (エネ${cost}個消費) - 交代先を選択`, this.p.bench.map((b, bi) => `<div onclick="battle.execRetreat(${bi},${cost});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-sky-700 mt-1">交代</span></div>`).join(''));
+        ui.openSelectModal(`にげる (エネ${cost}個消費) - 交代先を選択`, this.p.bench.map((b, bi) => `<div onclick="ui.closeSelectModal();battle.startRetreat(${bi},${cost});" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-sky-700 mt-1">交代</span></div>`).join(''));
       },
 
-      execRetreat(bi, cost) {
+      startRetreat(bi, cost) {
+        if (this.over || this.actionLocked || this.currentSide !== 'player' || !this.p.active || !this.p.bench[bi]) return;
+        const en = this.p.active.energies;
+        if (cost <= 0 || new Set(en).size <= 1 || en.length <= cost) { this.execRetreat(bi, cost, null); return; }
+        this.pendingRetreat = { session: this.sessionId, bi, cost, picked: [] };
+        this.actionLocked = true;
+        this.renderRetreatPicker();
+      },
+
+      renderRetreatPicker() {
+        const pr = this.pendingRetreat; if (!pr || !this.p.active) return;
+        const chips = this.p.active.energies.map((e, idx) => {
+          const on = pr.picked.includes(idx);
+          return `<button onclick="battle.toggleRetreatEnergy(${idx})" class="px-3.5 py-2 rounded-xl border-2 text-sm font-black ${on ? 'bg-rose-500 text-white border-rose-600' : 'bg-white text-slate-800 border-slate-300'}">${TYPE_META[e].code}${on ? ' ✕' : ''}</button>`;
+        }).join('');
+        const ready = pr.picked.length === pr.cost;
+        const html = `<div class="col-span-full flex flex-wrap gap-2 justify-center">${chips}</div>` +
+          `<div class="col-span-full flex flex-col items-center gap-2"><span class="text-xs font-bold text-slate-600">トラッシュするエネルギーを${pr.cost}個選んでください（${pr.picked.length}/${pr.cost}）</span>` +
+          `<button ${ready ? '' : 'disabled'} onclick="battle.confirmRetreat();ui.closeSelectModal();" class="px-5 py-2 rounded-xl ${ready ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'} text-sm font-black">にげる</button></div>`;
+        ui.openSelectModal('にげる：トラッシュするエネルギーを選択', html, true);
+      },
+
+      toggleRetreatEnergy(idx) {
+        const pr = this.pendingRetreat; if (!pr || pr.session !== this.sessionId) return;
+        const at = pr.picked.indexOf(idx);
+        if (at >= 0) pr.picked.splice(at, 1);
+        else if (pr.picked.length < pr.cost) pr.picked.push(idx);
+        this.renderRetreatPicker();
+      },
+
+      confirmRetreat() {
+        const pr = this.pendingRetreat;
+        if (!pr || pr.session !== this.sessionId || pr.picked.length !== pr.cost) return;
+        this.pendingRetreat = null;
+        this.actionLocked = false;
+        this.execRetreat(pr.bi, pr.cost, pr.picked);
+      },
+
+      execRetreat(bi, cost, picked = null) {
         if (this.over || this.actionLocked || this.currentSide !== 'player') return;
-        this.p.active.energies.splice(0, cost);
+        if (picked && picked.length) [...picked].sort((a, b) => b - a).forEach(idx => this.p.active.energies.splice(idx, 1));
+        else this.p.active.energies.splice(0, cost);
         const old = this.p.active; this.p.active = this.p.bench.splice(bi, 1)[0]; this.p.bench.push(old);
         this.p.retreated = true; sound.draw();
         this.log(`${CARD_MAP[this.p.active.cardId].name}に交代した！`);
@@ -8293,11 +8573,13 @@ const PACK_CATALOG_DATA = {
 
         if (o.currentEnergy && o.active) {
           const energyTarget = difficulty === 'expert' ? this.chooseCpuEnergyTarget() : o.active;
-          energyTarget.energies.push(o.currentEnergy);
+          const attachedType = o.currentEnergy;
+          energyTarget.energies.push(attachedType);
           this.log(difficulty === 'expert' && energyTarget !== o.active
             ? `CPUは次の攻撃に備えて${CARD_MAP[energyTarget.cardId].name}にエネルギーをつけた！`
             : 'CPUはバトルポケモンにエネルギーをつけた！');
           o.currentEnergy = null;
+          this.nightmareAura('opp', energyTarget, attachedType);
         }
 
         // Intermediate and hard CPUs use useful Items; the easy CPU deliberately skips them.
@@ -8316,7 +8598,7 @@ const PACK_CATALOG_DATA = {
 
         if (difficulty !== 'easy') {
           [o.active, ...o.bench].filter(Boolean).forEach((inst, idx) => {
-            if (CARD_MAP[inst.cardId]?.ability && !inst.abilityUsed) this.useAbility('opp', idx === 0 ? 'active' : 'bench', idx === 0 ? 0 : idx - 1);
+            if (CARD_MAP[inst.cardId]?.ability && !CARD_MAP[inst.cardId].ability.passive && !inst.abilityUsed) this.useAbility('opp', idx === 0 ? 'active' : 'bench', idx === 0 ? 0 : idx - 1);
           });
         }
         if (this.pendingSelfKO) {
@@ -8395,7 +8677,7 @@ const PACK_CATALOG_DATA = {
           if (this.p.currentEnergy) {
             act += `<button onclick="battle.assignZoneEnergy('${z}',${i});ui.closeCardModal();" class="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black">エネをつける(${TYPE_META[this.p.currentEnergy].code})</button>`;
           }
-          if (c.ability && !inst.abilityUsed) {
+          if (c.ability && !c.ability.passive && !inst.abilityUsed) {
             act += `<button onclick="battle.useAbility('player','${z}',${i});ui.closeCardModal();" class="px-3.5 py-2 rounded-xl bg-rose-500 text-white text-xs font-black">特性: ${c.ability.name}</button>`;
           }
           if (z === 'active' && this.o.active) {
@@ -8426,6 +8708,7 @@ const PACK_CATALOG_DATA = {
         this.over = true;
         this.sessionId++;
         this.actionLocked = false; this.pendingRareCandy = false; this.pendingGenomeAttack = null;
+        this.pendingAttackChoice = null; this.pendingRetreat = null;
         this.pendingSelfKO = false; this.pendingPromotionNext = null; this.pendingRemotePassTurn = false;
         this.promotionModalOpen = false;
         document.getElementById('modal-select')?.classList.add('hidden');
@@ -8461,7 +8744,8 @@ const PACK_CATALOG_DATA = {
         document.getElementById('result-reason').textContent = reason;
 
         const rk = accountMgr.getRankInfo(accountMgr.data.rating);
-        let rewardText = win ? '勝利報酬: 砂時計+24 / GOLD+100 / PT+30' : '参加賞: 砂時計+6';
+        const winHourglass = this.mode === 'ranked' ? 36 : 24;
+        let rewardText = win ? `勝利報酬: 砂時計+${winHourglass} / GOLD+100 / PT+30` : '参加賞: 砂時計+6';
         if (this.mode === 'ranked') {
           rewardText += ` ｜ レート ${rpDelta >= 0 ? '+' + rpDelta : rpDelta} RP → ${accountMgr.data.rating} RP (${rk.title})`;
         }
@@ -8489,7 +8773,7 @@ const PACK_CATALOG_DATA = {
         const c = CARD_MAP[inst.cardId];
         const pct = Math.max(0, Math.round((inst.hp / inst.maxHp) * 100));
         const canAtk = isActive && side === 'player' && !this.actionLocked && this.phase === 'play' && this.currentSide === 'player' && !this.isFirstTurnFor('player') && c.attacks.some(a => this.canPay(inst, a.cost));
-        const hasAb = c.ability && !inst.abilityUsed && side === 'player' && !this.actionLocked && this.phase === 'play' && this.currentSide === 'player';
+        const hasAb = c.ability && !c.ability.passive && !inst.abilityUsed && side === 'player' && !this.actionLocked && this.phase === 'play' && this.currentSide === 'player';
 
         return `
           <div ${dropAttr} onclick="battle.inspectFieldPokemon('${side}','${z}',${i})" class="pk-card border-${c.rarity} card-bg-${c.type} ${canAtk ? 'playable-glow' : ''} ${dropHighlight} ${isActive ? 'w-28 h-36 sm:w-32 sm:h-40 p-2' : 'w-20 h-28 sm:w-24 sm:h-32 p-1.5'} flex flex-col justify-between cursor-pointer relative">
@@ -8590,6 +8874,12 @@ const PACK_CATALOG_DATA = {
     };
 
     /* ==================== 13. メインアプリコントローラ ==================== */
+    function syncAppHeaderHeight() {
+      const h = document.querySelector('body > header');
+      if (h) document.documentElement.style.setProperty('--app-header-h', h.offsetHeight + 'px');
+    }
+    window.addEventListener('resize', syncAppHeaderHeight);
+
     const app = {
       switchScreen(name) {
         if (name !== 'pack') packSystem.resetStage();
@@ -8599,6 +8889,7 @@ const PACK_CATALOG_DATA = {
           if (battle) {
             battle.sessionId++; battle.actionLocked = false;
             battle.pendingRareCandy = false; battle.pendingGenomeAttack = null;
+            battle.pendingAttackChoice = null; battle.pendingRetreat = null;
             battle.pendingSelfKO = false; battle.pendingPromotionNext = null;
             battle.pendingRemotePassTurn = false; battle.promotionModalOpen = false;
           }
@@ -8607,6 +8898,7 @@ const PACK_CATALOG_DATA = {
         ['home', 'lobby', 'pack', 'deck', 'battle'].forEach(s => document.getElementById(`screen-${s}`).classList.add('hidden'));
         document.getElementById(`screen-${name}`).classList.remove('hidden');
         document.body.classList.toggle('battle-page-active', name === 'battle');
+        syncAppHeaderHeight();
         if (name === 'battle') window.scrollTo(0, 0);
         if (name === 'pack') { packSystem.resetStage(); packSystem.renderPackShop(); }
         if (name === 'deck') deckBuilder.init();
