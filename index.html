@@ -1409,6 +1409,8 @@
       { id: 'b3b_miracle', series: 'B', code: 'B3b', name: 'ミラクルデイズ', sub: 'デデンネex / パモット', artCard: 'c_dedenne_ex', type: 'Lightning', grad: 'from-amber-800 via-orange-700 to-yellow-700', accent: 'bg-yellow-200 text-slate-950' },
       { id: 'b4_sky', series: 'B', code: 'B4', name: '天空の支配者', sub: 'メガレックウザex', artCard: 'c_rayquaza_vmax', type: 'Dragon', grad: 'from-emerald-950 via-teal-900 to-amber-800', accent: 'bg-emerald-300 text-slate-950' },
       { id: 'b4a_rocket', series: 'B', code: 'B4a', name: 'ロケット団の野望', sub: 'R団のミュウツーex / サカキ', artCard: 'c_mewtwo_ex', type: 'Darkness', grad: 'from-neutral-950 via-zinc-900 to-rose-950', accent: 'bg-rose-400 text-slate-950' },
+      // B4b: the full print list is loaded from the collection shard before showing or opening this pack.
+      { id: 'b4b_mega', series: 'B', code: 'B4b', name: 'デラックスパック：メガ', sub: '過去シリーズの人気カードを再収録', artCard: 'c_mega_charizard_y', type: 'Colorless', grad: 'from-slate-950 via-indigo-900 to-amber-800', accent: 'bg-amber-300 text-slate-950' },
 
       // --- Cシリーズ (2パック) ---
       { id: 'c1_pikachu', series: 'C', code: 'C1', name: 'デュアルフュージョン ピカチュウ', sub: 'ピカチュウex / ゼクロム', artCard: 'c_pikachu_ex', type: 'Lightning', grad: 'from-yellow-800 via-amber-700 to-blue-950', accent: 'bg-yellow-300 text-slate-950' },
@@ -6480,7 +6482,7 @@ const PACK_CATALOG_DATA = {
   a4a_suicune:{setTotal:105,packTotal:105,coverage:'complete',verifiedPartial:105,nameLanguage:'ja'},a4b_highclass:{setTotal:379,packTotal:379,coverage:'complete',verifiedPartial:379,nameLanguage:'ja'},
   b1_blaziken:{setTotal:331,packTotal:139,coverage:'complete',verifiedPartial:139,nameLanguage:'ja'},b1_gyarados:{setTotal:331,packTotal:139,coverage:'complete',verifiedPartial:139,nameLanguage:'ja'},b1_altaria:{setTotal:331,packTotal:139,coverage:'complete',verifiedPartial:139,nameLanguage:'ja'},
   b1a_crimson:{setTotal:103,packTotal:103,coverage:'complete',verifiedPartial:103,nameLanguage:'ja'},b2_parade:{setTotal:234,packTotal:234,coverage:'complete',verifiedPartial:234,nameLanguage:'ja'},b2a_paldea:{setTotal:131,packTotal:131,coverage:'complete',verifiedPartial:131,nameLanguage:'ja'},b2b_shiningmega:{setTotal:117,packTotal:117,coverage:'complete',verifiedPartial:117,nameLanguage:'ja'},
-  b3_aurabeat:{setTotal:234,packTotal:234,coverage:'complete',verifiedPartial:234,nameLanguage:'ja'},b3a_paradox:{setTotal:109,packTotal:109,coverage:'complete',verifiedPartial:109,nameLanguage:'ja'},b3b_miracle:{setTotal:106,packTotal:106,coverage:'complete',verifiedPartial:106,nameLanguage:'ja'},b4_sky:{setTotal:233,packTotal:233,coverage:'complete',verifiedPartial:233,nameLanguage:'ja'},b4a_rocket:{setTotal:110,packTotal:110,coverage:'complete',verifiedPartial:110,nameLanguage:'ja'},
+  b3_aurabeat:{setTotal:234,packTotal:234,coverage:'complete',verifiedPartial:234,nameLanguage:'ja'},b3a_paradox:{setTotal:109,packTotal:109,coverage:'complete',verifiedPartial:109,nameLanguage:'ja'},b3b_miracle:{setTotal:106,packTotal:106,coverage:'complete',verifiedPartial:106,nameLanguage:'ja'},b4_sky:{setTotal:233,packTotal:233,coverage:'complete',verifiedPartial:233,nameLanguage:'ja'},b4a_rocket:{setTotal:110,packTotal:110,coverage:'complete',verifiedPartial:110,nameLanguage:'ja'},b4b_mega:{setTotal:429,packTotal:429,coverage:'complete',nameLanguage:'mixed'},
   c1_pikachu:{setTotal:217,packTotal:113,coverage:'complete'},c1_mewtwo:{setTotal:217,packTotal:113,coverage:'complete'}
 };
     // v37: connect every distinct pack-catalogue print to the collection system.
@@ -6615,7 +6617,7 @@ const PACK_CATALOG_DATA = {
     // Source dataset: PocketDecks/pokemon-tcg-pocket-cards v5 (AGPL-3.0-or-later).
     const CARD_DATA_SUPPLEMENT = {
       gameplayLoaded: new Set(), collectionLoaded: new Set(), pending: new Map(),
-      sourceCodes: [...new Set(PACKS.map(p => String(p.code || '').toLowerCase()).filter(Boolean))],
+      sourceCodes: [...new Set([...PACKS.map(p => String(p.code || '').toLowerCase()).filter(Boolean), 'pa', 'pb', 'pc'])],
       rarityCode(print) {
         const rarity = String(print?.rarity || ''), style = String(print?.art_style || ''), shiny = !!print?.shiny;
         if (rarity === '◊') return 'C'; if (rarity === '◊◊') return 'U'; if (rarity === '◊◊◊') return 'R'; if (rarity === '◊◊◊◊') return 'RR';
@@ -6672,6 +6674,95 @@ const PACK_CATALOG_DATA = {
           const byDeckNr=new Map(games.map(g=>[String(g.deckBuilderNr),g]));
           const collectionByPrint=new Map(collections.map(c=>[String(c.id||'').toLowerCase(),c]));
           const unlockedDeckNr=new Set(CARDS.filter(c=>!c.collectionOnly && c.deckBuilderNr!=null).map(c=>String(c.deckBuilderNr)));
+           const canonicalSet = raw => {
+             const v=String(raw||code).toLowerCase();
+             return /^[ab]\d/.test(v) ? v.charAt(0).toUpperCase()+v.slice(1) : v.toUpperCase();
+           };
+           const jpTypeMap={'草':'Grass','炎':'Fire','水':'Water','雷':'Lightning','超':'Psychic','闘':'Fighting','悪':'Darkness','鋼':'Metal','無':'Colorless','竜':'Dragon','ドラゴン':'Dragon'};
+           const jpStageMap={'たね':'Basic','1進化':'Stage1','2進化':'Stage2'};
+           const normPack=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+           const packForPrint=col=>{
+             if(code==='b4b') return 'b4b_mega';
+             if(code==='pa'||code==='pb'||code==='pc') return '';
+             const candidates=PACKS.filter(p=>String(p.code||'').toLowerCase()===code);
+             const token=normPack(col?.pack);
+             const match=candidates.find(p=>{
+               const art=normPack(p.artCard).replace(/^c/,'');
+               return !!token&&(art.includes(token)||token.includes(art)||normPack(p.id).includes(token)||normPack(p.name).includes(token)||normPack(p.sub).includes(token));
+             });
+             return match?.id||(candidates.length===1?candidates[0].id:'');
+           };
+           const newRecords=[];
+           for(const col of collections){
+             const id=String(col?.id||'').toLowerCase();
+             const m=id.match(/-(\d+)$/);
+             if(!m) continue;
+             const sourceSet=canonicalSet(col.set_code||code);
+             const number=String(parseInt(m[1],10)).padStart(3,'0');
+             const key=sourceSet+'-'+number;
+             const detail=JAPANESE_CARD_DETAILS[key]||null;
+             let record=PACK_CATALOG_PRINTS[key];
+             if(!record){
+               const alternateJapaneseName=(col.alternate_versions||[]).map(v=>{
+                 const altSet=canonicalSet(v.set_code||'');
+                 const altNumber=String(parseInt(v.id,10)).padStart(3,'0');
+                 const altKey=altSet+'-'+altNumber;
+                 return JAPANESE_CARD_DETAILS[altKey]?.nameJa||PACK_CATALOG_PRINTS[altKey]?.name||'';
+               }).find(v=>/[^\x00-\x7F]/.test(String(v||'')))||'';
+               record=PACK_CATALOG_PRINTS[key]={
+                 key,sourceSet,number,
+                 name:detail?.nameJa||alternateJapaneseName||String(col.name||('Card '+number)),
+                 rarity:'',packIds:[],
+                 nameLanguage:detail?'ja':alternateJapaneseName?'ja-derived':'en-fallback'
+               };
+               newRecords.push(record);
+             }
+             const matchedPack=packForPrint(col);
+             if(matchedPack&&!record.packIds.includes(matchedPack)) record.packIds.push(matchedPack);
+             const mapped=this.rarityCode(col);
+             const ambiguous=String(col.rarity||'')==='☆☆'&&!col.shiny&&!col.art_style;
+             const knownRarity=!!record.rarity;
+             if(mapped){
+               if(!ambiguous||!knownRarity) record.rarity=mapped;
+               record._rarityEstimatedAfterLoad=ambiguous&&!knownRarity;
+             }else if(!knownRarity){
+               record.rarity='C';
+               record._rarityEstimatedAfterLoad=true;
+             }else{
+               record._rarityEstimatedAfterLoad=!!record.rarityEstimated;
+             }
+             if(!record.nameLanguage){
+               record.nameLanguage=detail?'ja':(/[^\x00-\x7F]/.test(String(record.name||''))?'ja':'en-fallback');
+             }
+             if(!CARD_PRINT_MAP[key]){
+               const game=byPrint.get(id)||(col.alternate_versions||[]).map(v=>byPrint.get(String(v.set_code||'').toLowerCase()+'-'+String(v.id).padStart(3,'0'))).find(Boolean)||null;
+               const cardType=this.typeMap[game?.subtype]||jpTypeMap[detail?.typeJa]||'Colorless';
+               const category=game?(game.type==='Pokémon'?'Pokemon':'Trainer'):(detail?.typeJa?'Pokemon':detail?.trainerTypeJa?'Trainer':'Catalog');
+               const stageMap={Basic:'Basic','Stage 1':'Stage1','Stage 2':'Stage2'};
+               const cardName=detail?.nameJa||record.name||col.name||('Card '+number);
+               const cardId='catalog_'+sourceSet+'_'+number;
+               const attacks=game?this.attacksFrom(game):[];
+               const ability=game?.ability?.exists?{name:String(game.ability.name||'Ability'),text:String(game.ability.effect||''),unsupported:true}:null;
+               const ex=!!game?.ex||/ex$/i.test(cardName);
+               const card={
+                 id:cardId,name:cardName,jpName:cardName,jpDetail:detail,nameLanguage:record.nameLanguage,
+                 category,stage:stageMap[game?.stage]||jpStageMap[detail?.stageJa]||null,
+                 evolvesFrom:String(game?.evolves_from||'')||null,type:cardType,
+                 hp:Number(detail?.hp||game?.health)||null,
+                 rarity:record.rarity||'C',catalogRarity:record.rarity||'C',rarityEstimated:!!record._rarityEstimatedAfterLoad,
+                 collectionOnly:true,detailStatus:detail?'available':game?'available-en':'missing',
+                 sourceSet,setCode:sourceSet,collectorNumber:number,catalogKey:key,
+                 pack:record.packIds[0]||'',packIds:[...record.packIds],
+                 attacks,ability,text:String(game?.card_text||detail?.cardEffectText||''),
+                 subType:/Supporter/i.test(String(game?.subtype||detail?.trainerTypeJa||''))?'Supporter':'Item',
+                 weakness:this.typeMap[game?.weakness]||'None',retreat:Number(detail?.retreatCost??game?.retreat)||0,
+                 isEx:ex,pointValue:Number(game?.points)||(ex?2:1),deckBuilderNr:game?.deckBuilderNr,
+                 sourceUrl:String(detail?.sourceUrl||''),sourceLabel:String(detail?.source||'')
+               };
+               CARDS.push(card); CARD_MAP[cardId]=card; CARD_PRINT_MAP[key]=card;
+             }
+           }
+
           for(const record of Object.values(PACK_CATALOG_PRINTS)){
             if(String(record.sourceSet||'').toLowerCase()!==code) continue;
             const sourceId=`${code}-${String(parseInt(record.number,10)).padStart(3,'0')}`;
@@ -6709,7 +6800,49 @@ const PACK_CATALOG_DATA = {
               }
             }
           }
-          if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded.add(code);
+          
+           for(const record of newRecords){
+             const id=code+'-'+String(parseInt(record.number,10)).padStart(3,'0');
+             const col=collectionByPrint.get(id)||null;
+             const card=CARD_PRINT_MAP[record.key]||null;
+             if(record._rarityEstimatedAfterLoad!==undefined){
+               record.rarityEstimated=!!record._rarityEstimatedAfterLoad;
+               if(card) card.rarityEstimated=record.rarityEstimated;
+               delete record._rarityEstimatedAfterLoad;
+             }
+             if(card){
+               card.rarity=record.rarity||card.rarity;
+               card.catalogRarity=record.rarity||card.catalogRarity;
+               card.packIds=[...new Set([...(card.packIds||[]),...(record.packIds||[])])];
+               if(!card.pack&&record.packIds.length) card.pack=record.packIds[0];
+               card.nameLanguage=record.nameLanguage||card.nameLanguage;
+             }
+             const packId=record.packIds[0]||'';
+             const entry=packId&&PACK_CATALOG_DATA[packId];
+             if(entry&&!entry.list.trim().split(/\n/).some(line=>line.trim().startsWith(record.number+':'))){
+               entry.list=entry.list.trim()+'\n'+record.number+':'+record.name+':'+(record.rarity||'');
+               entry.expected=entry.list.trim().split(/\n/).length;
+               if(PACK_CATALOG_META[packId]) PACK_CATALOG_META[packId].packTotal=entry.expected;
+             }
+           }
+           if(collections.length){
+             const setRecords=collections.map(col=>{
+               const m=String(col.id||'').toLowerCase().match(/-(\d+)$/);
+               if(!m) return null;
+               const setCode=canonicalSet(col.set_code||code);
+               const key=setCode+'-'+String(parseInt(m[1],10)).padStart(3,'0');
+               return PACK_CATALOG_PRINTS[key]||null;
+             }).filter(Boolean);
+             const list=setRecords.map(r=>r.number+':'+r.name+':'+(r.rarity||'')).join('\n');
+             if(code==='b4b'){
+               PACK_CATALOG_DATA.b4b_mega={complete:true,sourceSet:'B4b',expected:setRecords.length,nameLanguage:'mixed',list};
+             }else if(code==='pa'||code==='pb'||code==='pc'){
+               const labels={pa:'プロモA',pb:'プロモB',pc:'プロモC'};
+               PACK_CATALOG_DATA['promo_'+code+'_cards']={complete:true,sourceSet:canonicalSet(code),expected:setRecords.length,nameLanguage:'mixed',displayName:labels[code],list};
+             }
+           }
+           CARD_CATALOG_STATS.packPrints=Object.keys(PACK_CATALOG_PRINTS).length;
+if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded.add(code);
           CARD_CATALOG_STATS.battleReady=CARDS.filter(c=>!c.collectionOnly).length;
           CARD_CATALOG_STATS.detailIncluded=Object.keys(PACK_CATALOG_PRINTS).filter(key=>!!JAPANESE_CARD_DETAILS[key]||!!(CARD_PRINT_MAP[key]&&!CARD_PRINT_MAP[key].collectionOnly)||!!CARD_PRINT_MAP[key]?.enDetail).length;
           CARD_CATALOG_STATS.detailMissing=Math.max(0,CARD_CATALOG_STATS.packPrints-CARD_CATALOG_STATS.detailIncluded);
@@ -6765,6 +6898,8 @@ const PACK_CATALOG_DATA = {
       catalogCount(packId) {
         const entry = PACK_CATALOG_DATA[packId];
         if (entry) return entry.list.trim().split(/\n/).length;
+        const expected = PACK_CATALOG_META[packId]?.packTotal;
+        if (expected) return expected;
         const pack = PACKS.find(p => p.id === packId);
         const featured = pack ? pack.sub.split(/\s*\/\s*/).filter(x => x && !/総集編/.test(x)) : [];
         const existing = CARDS.filter(c => c.pack === packId).map(c => c.name);
@@ -6985,7 +7120,13 @@ const PACK_CATALOG_DATA = {
           ui.toast('開封処理を開始できませんでした');
           return;
         }
-        const cost = count * 12;
+        const sourceSet=String(PACK_CATALOG_DATA[packId]?.sourceSet||PACKS.find(p=>p.id===packId)?.code||'').toLowerCase();
+          if(sourceSet&&!CARD_DATA_SUPPLEMENT.collectionLoaded.has(sourceSet)){
+            this.executingOpen=true;
+            CARD_DATA_SUPPLEMENT.loadSet(sourceSet,true).then(()=>{this.executingOpen=false;this.executeOpen(packId,count);}).catch(err=>{this.executingOpen=false;console.warn(err);this.resetStage();ui.toast('カードデータを読み込めず、開封できませんでした。通信を確認してください');});
+            return;
+          }
+          const cost = count * 12;
         if (accountMgr.data.hourglass < cost) {
           ui.toast(`砂時計が足りません（必要:${cost}）`);
           this.resetStage();
