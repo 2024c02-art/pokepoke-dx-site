@@ -6634,6 +6634,7 @@ const PACK_CATALOG_DATA = {
         const t=String(text||'').trim().replace(/[.!。]$/,''); if(!t) return null;
         let m;
         if((m=t.match(/^This (?:Pokémon|Pokemon) also takes (\d+) damage$/i))) return {selfDamage:Number(m[1])};
+        if((m=t.match(/^This (?:Pokémon|Pokemon) also does (\d+) damage to itself$/i))) return {selfDamage:Number(m[1])};
         if((m=t.match(/^Heal (\d+) damage from this (?:Pokémon|Pokemon)$/i))) return {selfHeal:Number(m[1])};
         if((m=t.match(/^Discard (\d+) (?:(Grass|Fire|Water|Lightning|Psychic|Fighting|Darkness|Metal|Colorless|Dragon) )?Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:Number(m[1]),energyType:m[2]||null};
         if((m=t.match(/^This attack also does (\d+) damage to 1 of your opponent's Benched (?:Pokémon|Pokemon)$/i))) return {benchDamage:Number(m[1])};
@@ -6645,6 +6646,9 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^This attack also does (\d+) damage to each of your opponent's Benched (?:Pokémon|Pokemon)$/i))) return {benchAllDamage:Number(m[1])};
         if((m=t.match(/^Flip a coin\. If heads, this attack does (\d+) more damage$/i))) return {coinCount:1,coinBonusDamage:Number(m[1])};
         if((m=t.match(/^Flip (\d+) coins?\. This attack does (\d+) (more )?damage for each heads$/i))) return m[3] ? {coinCount:Number(m[1]),coinBonusDamage:Number(m[2])} : {coinCount:Number(m[1]),coinDamagePerHeads:Number(m[2])};
+        if(/^Flip a coin\. If tails, this attack does nothing$/i.test(t)) return {coinCount:1,coinFailDamageZero:true};
+        if(/^Flip a coin\. If heads, discard a random Energy from your opponent's Active (?:Pokémon|Pokemon)$/i.test(t)) return {coinCount:1,coinThenDiscardOpponentRandomEnergy:true};
+        if(/^Discard a random Energy from your opponent's Active (?:Pokémon|Pokemon)$/i.test(t)) return {discardOpponentRandomEnergy:1};
         if(/^Discard all Energy from this (?:Pokémon|Pokemon)$/i.test(t)) return {discardAllEnergy:true};
         if(/^Discard a random Energy from this (?:Pokémon|Pokemon)$/i.test(t)) return {discardRandomEnergy:1};
         if((m=t.match(/^Discard (?:a|an) \[([GRWLPFDM])\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:1,energyType:this.energyMap[m[1].toUpperCase()]||null};
@@ -8868,13 +8872,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
 
         const coinEffect=atk.genericEffect||{};
-        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads){
+        let coinHeads=0;
+        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy){
           const coinCount=Math.max(1,Math.min(4,Number(coinEffect.coinCount)||1));
-          let heads=0;
-          for(let coin=0;coin<coinCount;coin++) if(Math.random()<0.5) heads++;
-          const rolledDamage=coinEffect.coinDamagePerHeads ? Number(coinEffect.coinDamagePerHeads)*heads : Number(atk.damage||0)+Number(coinEffect.coinBonusDamage||0)*heads;
+          for(let coin=0;coin<coinCount;coin++) if(Math.random()<0.5) coinHeads++;
+          let rolledDamage=Number(atk.damage||0);
+          if(coinEffect.coinFailDamageZero&&coinHeads===0) rolledDamage=0;
+          else if(coinEffect.coinDamagePerHeads) rolledDamage=Number(coinEffect.coinDamagePerHeads)*coinHeads;
+          else if(coinEffect.coinBonusDamage) rolledDamage+=Number(coinEffect.coinBonusDamage)*coinHeads;
           atk={...atk,damage:rolledDamage};
-          this.log(`コイントス！オモテ${heads}回／${coinCount}回。`);
+          this.log(`コイントス！オモテ${coinHeads}回／${coinCount}回。`);
         }
         const prev = this.calcDamagePreview(s.active, atk, opp.active, side);
         const dmg = prev.final;
@@ -8902,6 +8909,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         if(ge.discardAllEnergy){const removed=s.active.energies.length;s.active.energies=[];if(removed)this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをすべてトラッシュ。`);}
         if(ge.discardRandomEnergy&&s.active.energies.length){const index=Math.floor(Math.random()*s.active.energies.length);s.active.energies.splice(index,1);this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをランダムに1個トラッシュ。`);}
+        if((ge.discardOpponentRandomEnergy||(ge.coinThenDiscardOpponentRandomEnergy&&coinHeads>0))&&opp.active.energies.length){const index=Math.floor(Math.random()*opp.active.energies.length);opp.active.energies.splice(index,1);this.log('相手のバトルポケモンのエネルギーをランダムに1個トラッシュ！');}
         if(ge.drawCards){const before=s.hand.length;this.drawCards(side,Number(ge.drawCards));const drawn=s.hand.length-before;this.log(`${getCardDisplayName(attC)}のワザ効果：山札を${drawn}枚引いた！`);}
         const selfDamageAttack = atk.fx === 'selfdmg30' || Number(ge.selfDamage||0)>0;
         if (selfDamageAttack) s.active.hp -= atk.fx === 'selfdmg30' ? 30 : Number(ge.selfDamage||0);
