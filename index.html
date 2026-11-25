@@ -1360,7 +1360,7 @@
       const key=card.catalogKey || (card.setCode&&card.collectorNumber ? `${String(card.setCode).toUpperCase()}-${String(card.collectorNumber).padStart(3,'0')}` : '');
       return key && typeof JAPANESE_CARD_DETAILS!=='undefined' ? (JAPANESE_CARD_DETAILS[key]||null) : null;
     }
-    function getCardDisplayName(card) { const d=getJapaneseDetailForCard(card); const n=d?.nameJa||card?.jpName||card?.name||'カード'; return hasJapaneseText(n)?n:(card?.jpName||'カード情報未登録'); }
+    function getCardDisplayName(card) { const d=getJapaneseDetailForCard(card); const n=[d?.nameJa,card?.jpName,card?.name].find(hasJapaneseText); return n||'カード情報未登録'; }
     function getCardDisplayAttackName(card,attack,index=0) { const n=getJapaneseDetailForCard(card)?.attacks?.[index]?.name||attack?.jpName||''; return hasJapaneseText(n)?n:(hasJapaneseText(attack?.name)?attack.name:'ワザ情報未登録'); }
     function getCardDisplayAttackEffect(card,attack,index=0) { const e=getJapaneseDetailForCard(card)?.attacks?.[index]?.effect||attack?.jpText||''; if(hasJapaneseText(e))return e; if(hasJapaneseText(attack?.text))return attack.text; return attack?.text?'日本語の効果文は未登録です。':''; }
     function getCardDisplayAbility(card) { const a=getJapaneseDetailForCard(card)?.abilities?.[0]; const n=typeof a==='string'?a:(a?.name||''); const t=typeof a==='object'?(a.effect||a.text||''):''; if(hasJapaneseText(n))return {name:n,text:hasJapaneseText(t)?t:''}; if(hasJapaneseText(card?.ability?.name))return {name:card.ability.name,text:hasJapaneseText(card.ability.text)?card.ability.text:''}; return card?.ability?{name:'特性情報未登録',text:''}:null; }
