@@ -9055,7 +9055,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         const coinEffect=atk.genericEffect||{};
         let coinHeads=0, coinRolls=0;
-        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy||coinEffect.coinDiscardOpponentRandomEnergyPerHeads||coinEffect.coinUntilTails||coinEffect.selfDamageOnTails||coinEffect.coinAllHeadsBonus||coinEffect.coinPerPokemon){
+        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy||coinEffect.coinDiscardOpponentRandomEnergyPerHeads||coinEffect.coinUntilTails||coinEffect.selfDamageOnTails||coinEffect.coinAllHeadsBonus||coinEffect.coinPerPokemon||coinEffect.opponentStatusesIfHeads){
           const coinCount=coinEffect.coinPerPokemon?Math.max(1,Math.min(4,(s.active?1:0)+s.bench.length)):Math.max(1,Math.min(4,Number(coinEffect.coinCount)||1));
           if(coinEffect.coinUntilTails){
             let tails=false;
