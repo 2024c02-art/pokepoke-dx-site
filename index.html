@@ -6580,6 +6580,10 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^This attack also does (\d+) damage to 1 of your opponent's Benched (?:Pokémon|Pokemon)$/i))) return {benchDamage:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each point your opponent has taken$/i))) return {bonusPerOpponentPoint:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each Energy attached to this (?:Pokémon|Pokemon)$/i))) return {bonusPerEnergy:Number(m[1])};
+        if((m=t.match(/^This attack does (\d+) more damage for each Energy attached to your opponent's Active (?:Pokémon|Pokemon)$/i))) return {bonusPerOpponentEnergy:Number(m[1])};
+        if((m=t.match(/^This attack does (\d+) damage for each of your Benched \[([A-Z])\] (?:Pokémon|Pokemon)$/i))) return {bonusPerBenchPokemon:Number(m[1]),benchPokemonType:m[2]};
+        if((m=t.match(/^This attack does (\d+) more damage for each damage counter on this (?:Pokémon|Pokemon)$/i))) return {bonusPerDamageCounter:Number(m[1])};
+        if((m=t.match(/^This attack also does (\d+) damage to each of your opponent's Benched (?:Pokémon|Pokemon)$/i))) return {benchAllDamage:Number(m[1])};
         return null;
       },
       attacksFrom(game) {
@@ -6814,7 +6818,7 @@ const PACK_CATALOG_DATA = {
             const card=c.playable;
             const jpUrl = japaneseCardReferenceUrl(c.sourceSet, c.number);
             const jpLink = jpUrl ? `<a class="mt-1 text-[9px] font-black text-sky-700 underline text-center" href="${jpUrl}" target="_blank" rel="noopener noreferrer">日本語カード情報 ↗</a>` : '';
-            const embeddedImage = c.sourceSet && c.number ? (EMBEDDED_CARD_IMAGES[`${String(c.sourceSet).trim()}-${Number(c.number)}`] || '') : ''; const realCardImg = embeddedImage ? `<img src="${embeddedImage}" alt="${safe(c.jpDetail?.nameJa||card.name)}" loading="lazy" class="w-full max-w-[140px] rounded-lg object-contain shadow-sm mb-1" onerror="this.style.display='none'">` : ''; return `<div class="flex flex-col items-center rounded-xl border border-slate-200 bg-slate-50 p-2 min-w-0">${realCardImg}<div class="cursor-pointer">${ui.renderMiniCard(card.id,{onClick:`ui.openCardModal(CARD_MAP['${card.id}'])`})}</div>${c.jpDetail?`<div class="mt-1 text-[10px] font-black text-sky-800 text-center">${safe(c.jpDetail.nameJa)}</div>`:''}<div class="mt-1 text-[10px] text-slate-600 font-bold text-center">${c.number?`#${safe(c.number)} · `:''}${card.category==='Pokemon'?(card.stage==='Basic'?'たね':card.stage==='Stage1'?'1進化':'2進化'):card.subType==='Supporter'?'サポート':'トレーナー'} ・ ${RARITY_STARS[card.rarity]||card.rarity}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):englishDetailHtml(card)}${jpLink}</div>`;
+            const jpName=c.jpDetail?.nameJa||card.name; const jpAttack=c.jpDetail?.attacks?.[0]?.name||''; return `<div class="flex flex-col items-center rounded-xl border border-slate-200 bg-slate-50 p-2 min-w-0"><div class="cursor-pointer">${ui.renderMiniCard(card.id,{displayName:jpName,displayAttackName:jpAttack,noEnglishImage:true,onClick:`ui.openCardModal(CARD_MAP['${card.id}'])`})}</div>${c.jpDetail?`<div class="mt-1 text-[10px] font-black text-sky-800 text-center">${safe(c.jpDetail.nameJa)}</div>`:''}<div class="mt-1 text-[10px] text-slate-600 font-bold text-center">${c.number?`#${safe(c.number)} · `:''}${card.category==='Pokemon'?(card.stage==='Basic'?'たね':card.stage==='Stage1'?'1進化':'2進化'):card.subType==='Supporter'?'サポート':'トレーナー'} ・ ${RARITY_STARS[card.rarity]||card.rarity}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):englishDetailHtml(card)}${jpLink}</div>`;
           }
           const number = c.number ? `#${safe(c.number)}` : '';
           const jpUrl = japaneseCardReferenceUrl(c.sourceSet, c.number);
@@ -8393,6 +8397,8 @@ const PACK_CATALOG_DATA = {
         return pool.length >= cost.filter(x => x === 'Colorless').length;
       },
 
+      energyEffectType(code) { return ({G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal',C:'Colorless'})[String(code||'').toUpperCase()]||null; },
+
       calcDamagePreview(attInst, atk, defInst, side) {
         const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
         const attC = CARD_MAP[attInst.cardId], defC = CARD_MAP[defInst.cardId];
@@ -8400,6 +8406,9 @@ const PACK_CATALOG_DATA = {
         let dmg = atk.damage + bonus;
         if(atk.genericEffect?.bonusPerOpponentPoint) dmg += Number(atk.genericEffect.bonusPerOpponentPoint||0)*Number(opp.points||0);
         if(atk.genericEffect?.bonusPerEnergy) dmg += Number(atk.genericEffect.bonusPerEnergy||0)*attInst.energies.length;
+        if(atk.genericEffect?.bonusPerOpponentEnergy) dmg += Number(atk.genericEffect.bonusPerOpponentEnergy||0)*opp.active.energies.length;
+        if(atk.genericEffect?.bonusPerBenchPokemon) { const type=this.energyEffectType(atk.genericEffect.benchPokemonType); const benchCount=s.bench.filter(b=>!type||CARD_MAP[b.cardId]?.type===type).length; dmg += Number(atk.genericEffect.bonusPerBenchPokemon||0)*benchCount; }
+        if(atk.genericEffect?.bonusPerDamageCounter) dmg += Number(atk.genericEffect.bonusPerDamageCounter||0)*Math.floor(Math.max(0,attInst.maxHp-attInst.hp)/10);
         switch (atk.fx) {
           case 'bench_lightning30': dmg = s.bench.filter(b => CARD_MAP[b.cardId].type === 'Lightning').length * 30 + bonus; break;
           case 'bench20': dmg += s.bench.length * 20; break;
@@ -8622,6 +8631,7 @@ const PACK_CATALOG_DATA = {
 
         // Attacks that need a bench target: the player picks it, the CPU chooses automatically.
         const genericBenchDamage=Number(atk.genericEffect?.benchDamage||0);
+        const genericBenchAllDamage=Number(atk.genericEffect?.benchAllDamage||0);
         const pickKind = (atk.fx === 'bench_snipe30' || genericBenchDamage>0) ? 'oppBench' : atk.fx === 'metal_turbo' ? 'ownBench' : null;
         if (pickKind && !choice) {
           const list = pickKind === 'oppBench' ? opp.bench : s.bench;
@@ -8692,6 +8702,7 @@ const PACK_CATALOG_DATA = {
           opp.bench[choice.bench].hp-=genericBenchDamage;
           this.log(`相手の${CARD_MAP[opp.bench[choice.bench].cardId].name}にも${genericBenchDamage}ダメージ！`);
         }
+        if(genericBenchAllDamage>0 && opp.bench.length){ opp.bench.forEach(b=>{b.hp-=genericBenchAllDamage;}); this.log(`相手のベンチ全員にも${genericBenchAllDamage}ダメージ！`); }
 
         for (let bi = opp.bench.length - 1; bi >= 0; bi--) {
           if (opp.bench[bi].hp <= 0) this.checkKO(side === 'player' ? 'opp' : 'player', 'bench', bi, true);
