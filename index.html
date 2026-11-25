@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ポケポケDX v45 A1共有カード収録拡張版 | ぽきもんかーどばとる</title>
+  <title>ポケポケDX v46 効果のみワザ対応拡張版 | ぽきもんかーどばとる</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
@@ -6679,7 +6679,8 @@ const PACK_CATALOG_DATA = {
         return Object.values(game?.attacks || {}).filter(a => a && a.name).map(a => {
           const damageLabel = String(a.damage ?? ''); const match = damageLabel.match(/\d+/); const text=String(a.effect || '');
           const genericEffect=this.parseGenericEffect(text);
-          return { name:String(a.name), cost:this.parseCost(a.cost), damage:Number(match?.[0] || 0), damageLabel, text, genericEffect, unsupportedEffect:!!text&&!genericEffect || !/^\d+$/.test(damageLabel) };
+          const unsupportedEffect = (!!text && !genericEffect) || (!/^\d+$/.test(damageLabel) && !genericEffect);
+          return { name:String(a.name), cost:this.parseCost(a.cost), damage:Number(match?.[0] || 0), damageLabel, text, genericEffect, unsupportedEffect };
         });
       },
       async fetchShard(setCode, kind) {
