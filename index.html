@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ポケポケDX v40 カタログ表示修正・対戦効果拡張版 | ぽきもんかーどばとる</title>
+  <title>ポケポケDX v41 日本語カード表示・シークレット報酬版 | ぽきもんかーどばとる</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
@@ -1131,6 +1131,11 @@
         </div>
       </div>
 
+      <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
+        <div class="text-xs font-black text-amber-800">🎁 シークレットコード</div><p class="text-[10px] text-amber-900">コード入力で砂時計を受け取れます。1アカウントにつき1回です。</p>
+        <div class="flex gap-2"><input id="acc-secret-code" type="text" maxlength="64" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="シークレットコード" class="min-w-0 flex-1 bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-mono font-bold uppercase" onkeydown="if(event.key==='Enter') accountMgr.redeemSecretCode()" /><button type="button" onclick="accountMgr.redeemSecretCode()" class="px-4 py-2 rounded-xl bg-amber-500 text-white text-xs font-black shrink-0">受け取る</button></div>
+        <div class="text-[9px] text-amber-700">受け取り履歴はアカウントのセーブデータに保存されます。</div>
+      </div>
       <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
         <div class="text-xs font-black text-indigo-700">アカウント切り替え・新規作成</div>
         <div id="account-list" class="space-y-1.5 max-h-36 overflow-y-auto"></div>
@@ -1338,12 +1343,22 @@
       if (!print) return '';
       const number = String(print.number).padStart(3, '0');
       const embeddedKey = `${print.set}-${Number(number)}`;
-      const embeddedPath = typeof EMBEDDED_CARD_IMAGES !== 'undefined' ? EMBEDDED_CARD_IMAGES[embeddedKey] : '';
-      if (embeddedPath) return embeddedPath;
+      // Built-in card art is English. Always prefer the Japanese print endpoint.
       const hashPath = print.hash ? `${print.hash}/` : '';
       const sourceUrl = `https://game.pokemontcgpocket.app/ja/tcgp/${encodeURIComponent(print.set)}/${number}/${hashPath}high.webp`;
       return `https://www.pokemontcgpocket.app/_next/image?q=75&url=${encodeURIComponent(sourceUrl)}&w=3840`;
     }
+
+    function hasJapaneseText(value) { return /[\u3040-\u30ff\u3400-\u9fff]/.test(String(value || '')); }
+    function getJapaneseDetailForCard(card) {
+      if (!card) return null; if (card.jpDetail) return card.jpDetail;
+      const key=card.catalogKey || (card.setCode&&card.collectorNumber ? `${String(card.setCode).toUpperCase()}-${String(card.collectorNumber).padStart(3,'0')}` : '');
+      return key && typeof JAPANESE_CARD_DETAILS!=='undefined' ? (JAPANESE_CARD_DETAILS[key]||null) : null;
+    }
+    function getCardDisplayName(card) { const d=getJapaneseDetailForCard(card); const n=d?.nameJa||card?.jpName||card?.name||'カード'; return hasJapaneseText(n)?n:(card?.jpName||'カード情報未登録'); }
+    function getCardDisplayAttackName(card,attack,index=0) { const n=getJapaneseDetailForCard(card)?.attacks?.[index]?.name||attack?.jpName||''; return hasJapaneseText(n)?n:(hasJapaneseText(attack?.name)?attack.name:'ワザ情報未登録'); }
+    function getCardDisplayAttackEffect(card,attack,index=0) { const e=getJapaneseDetailForCard(card)?.attacks?.[index]?.effect||attack?.jpText||''; if(hasJapaneseText(e))return e; if(hasJapaneseText(attack?.text))return attack.text; return attack?.text?'日本語の効果文は未登録です。':''; }
+    function getCardDisplayAbility(card) { const a=getJapaneseDetailForCard(card)?.abilities?.[0]; const n=typeof a==='string'?a:(a?.name||''); const t=typeof a==='object'?(a.effect||a.text||''):''; if(hasJapaneseText(n))return {name:n,text:hasJapaneseText(t)?t:''}; if(hasJapaneseText(card?.ability?.name))return {name:card.ability.name,text:hasJapaneseText(card.ability.text)?card.ability.text:''}; return card?.ability?{name:'特性情報未登録',text:''}:null; }
 
     function generateCardArtworkSvg(card, imageFit = 'cover') {
       const m = TYPE_META[card.type] || TYPE_META.Colorless;
@@ -1351,7 +1366,7 @@
       const fallbackSvg = `<svg viewBox="0 0 160 112" class="w-full h-full" xmlns="http://www.w3.org/2000/svg"><circle cx="80" cy="56" r="42" fill="${m.glow}" opacity="0.45"/><circle cx="80" cy="56" r="32" fill="none" stroke="#fff" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.75"/>${subject}</svg>`;
       const imageUrl = getJapaneseCardImageUrl(card);
       if (!imageUrl) return fallbackSvg;
-      const safeName = String(card.name || 'カード').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+      const safeName = String(getCardDisplayName(card)).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
       return `<div class="relative w-full h-full overflow-hidden flex items-center justify-center"><div class="absolute inset-0">${fallbackSvg}</div><img src="${imageUrl}" alt="${safeName}" loading="lazy" decoding="async" class="absolute inset-0 w-full h-full object-${imageFit}" onerror="this.remove()"></div>`;
     }
 
@@ -1548,7 +1563,7 @@
           id, name, avatar, password,
           hourglass: 240, packPoints: 0,
           rating: 1000, wins: 0, losses: 0, streak: 0,
-          collection, packRewardsClaimed: {}, allCollectionRewardClaimed: false, activeDeckSlot: 0,
+          collection, packRewardsClaimed: {}, allCollectionRewardClaimed: false, activeDeckSlot: 0, secretCodesRedeemed: [],
           decks: [
             { name: PRESET_DECKS.charizard.name, energies: [...PRESET_DECKS.charizard.energies], cards: [...PRESET_DECKS.charizard.cards] },
             { name: PRESET_DECKS.pikachu.name, energies: [...PRESET_DECKS.pikachu.energies], cards: [...PRESET_DECKS.pikachu.cards] },
@@ -1630,7 +1645,8 @@
         CARDS.forEach(c => {
           loaded.collection[c.id] = this.sanitizeCount(loaded.collection[c.id], 2, 999);
         });
-        loaded.hourglass = this.sanitizeCount(loaded.hourglass, 240);
+        loaded.hourglass = this.sanitizeCount(loaded.hourglass, 240, 10000000);
+        loaded.secretCodesRedeemed=Array.isArray(loaded.secretCodesRedeemed)?[...new Set(loaded.secretCodesRedeemed.filter(x=>typeof x==='string').map(x=>x.trim().toUpperCase()).filter(Boolean))].slice(0,100):[];
         delete loaded.gold;
         loaded.packPoints = this.sanitizeCount(loaded.packPoints, 0);
         loaded.rating = typeof loaded.rating === 'number' && Number.isFinite(loaded.rating) ? Math.max(500, Math.floor(loaded.rating)) : 1000;
@@ -1698,6 +1714,19 @@
         this.renderList();
         document.getElementById('modal-account').classList.remove('hidden');
       },
+      redeemSecretCode() {
+        const input=document.getElementById('acc-secret-code'); const code=String(input?.value||'').trim().toUpperCase().replace(/[\\s-]/g,'');
+        if(!code){ui.toast('コードを入力してください');return false;}
+        const reward=({POKEDXHOURGLASS10000:10000})[code];
+        if(!reward){ui.toast('コードが違います');return false;}
+        const redeemed=new Set(Array.isArray(this.data.secretCodesRedeemed)?this.data.secretCodesRedeemed:[]);
+        if(redeemed.has(code)){ui.toast('このコードは使用済みです');return false;}
+        const current=this.sanitizeCount(this.data.hourglass,240,10000000);
+        if(current+reward>10000000){ui.toast('砂時計の所持上限に達しています');return false;}
+        redeemed.add(code); this.data.secretCodesRedeemed=[...redeemed].slice(0,100); this.data.hourglass=current+reward;
+        this.saveCurrent(); if(input)input.value=''; ui.toast(`砂時計を${reward.toLocaleString()}個受け取りました！`); return true;
+      },
+
       closeModal() { document.getElementById('modal-account').classList.add('hidden'); },
 
       renderList() {
@@ -2100,6 +2129,8 @@
           badgeText = 'サポート'; badgeColor = 'bg-orange-500 text-white';
         }
         const firstAtk = c.attacks && c.attacks[0];
+        const displayName=options.displayName||getCardDisplayName(c), displayAttackName=options.displayAttackName||getCardDisplayAttackName(c,firstAtk,0);
+        const displayAbility=getCardDisplayAbility(c), displayNoAttackText=displayAbility?`特性: ${displayAbility.name}`:(c.collectionOnly?'詳細データ未登録':(hasJapaneseText(c.text)?c.text:''));
         const inspectBtn = options.onInspect
           ? `<button type="button" title="カード効果を確認" onclick="event.stopPropagation(); ${options.onInspect}" class="absolute top-0.5 right-0.5 z-40 w-5 h-5 rounded-full bg-slate-900/80 hover:bg-sky-600 text-white text-[10px] flex items-center justify-center shadow border border-white/70">🔍</button>`
           : '';
@@ -2111,7 +2142,7 @@
             ${inspectBtn}
             <div class="flex items-center justify-between gap-0.5 leading-none z-10 pr-4">
               <span class="px-1 py-0.5 rounded text-[7px] font-black shrink-0 ${badgeColor}">${badgeText}</span>
-              <span class="truncate text-[9px] font-black ${textMain} flex-1">${c.name}</span>
+              <span class="truncate text-[9px] font-black ${textMain} flex-1">${escapeHtml(displayName)}</span>
               ${c.hp ? `<span class="font-black text-[10px] ${isDark ? 'text-amber-300' : 'text-rose-600'} shrink-0"><span class="text-[7px]">HP</span>${c.hp}</span>` : renderTypeBadgeSvg(c.type, 13)}
             </div>
             <div class="${isFullArt ? 'h-20' : 'flex-1'} my-1 rounded-lg bg-gradient-to-br from-white/85 via-white/40 to-black/20 border border-white/85 flex items-center justify-center relative overflow-hidden">
@@ -2120,13 +2151,13 @@
               ${options.isNew ? '<span class="absolute top-0.5 left-0.5 px-1 rounded bg-rose-600 text-white text-[7px] font-black">NEW!</span>' : ''}
             </div>
             <div class="bg-white/88 rounded px-1 py-0.5 text-[8px] text-slate-900 font-bold truncate z-10 flex items-center justify-between">
-              ${firstAtk ? `<span class="truncate flex items-center gap-0.5">${(firstAtk.cost || []).slice(0,2).map(ct => renderTypeBadgeSvg(ct, 10)).join('')}${firstAtk.name}</span><span class="font-black ml-0.5">${firstAtk.damageLabel || firstAtk.damage}</span>` : `<span class="truncate">${c.ability ? '特性:' + c.ability.name : (c.collectionOnly ? '詳細データ未登録' : (c.text || ''))}</span>`}
+              ${firstAtk ? `<span class="truncate flex items-center gap-0.5">${(firstAtk.cost || []).slice(0,2).map(ct => renderTypeBadgeSvg(ct, 10)).join('')}${escapeHtml(displayAttackName)}</span><span class="font-black ml-0.5">${firstAtk.damageLabel || firstAtk.damage}</span>` : `<span class="truncate">${escapeHtml(displayNoAttackText)}</span>`}
             </div>
             <div class="flex items-center justify-between text-[8px] font-black pt-0.5 z-10 ${textMain}">
               <span>${c.rarityEstimated ? '？' : (RARITY_STARS[c.rarity] || c.rarity)}</span>
               <span>${c.weakness && c.weakness !== 'None' ? `弱:${renderTypeBadgeSvg(c.weakness, 10)}+20` : ''}</span>
             </div>
-            ${getJapaneseCardImageUrl(c) ? `<img src="${getJapaneseCardImageUrl(c)}" alt="${c.name}" loading="lazy" decoding="async" class="absolute inset-0 z-30 w-full h-full object-contain rounded-lg" onerror="this.remove()">` : ''}
+            ${getJapaneseCardImageUrl(c) ? `<img src="${getJapaneseCardImageUrl(c)}" alt="${escapeHtml(displayName)}" loading="lazy" decoding="async" class="absolute inset-0 z-30 w-full h-full object-contain rounded-lg" onerror="this.remove()">` : ''}
           </div>
         `;
       },
@@ -2136,13 +2167,16 @@
         const isHolo = ['UR', 'SAR', 'SR', 'RR', 'AR', 'S', 'SSR', 'IM'].includes(card.rarity || card.catalogRarity);
         const isDark = card.type === 'Darkness';
         const textMain = isDark ? 'text-white' : 'text-slate-900';
+        const displayName=getCardDisplayName(card), displayAbility=getCardDisplayAbility(card);
+        const ce=getJapaneseDetailForCard(card)?.cardEffectText||'';
+        const displayCardText=hasJapaneseText(ce)?ce:(hasJapaneseText(card.text)?card.text:(card.text?'日本語のカード効果文は未登録です。':''));
 
         document.getElementById('modal-card-body').innerHTML = `
           ${fieldStatusHtml}
           <div id="tilt-target" class="tilt-card pk-card border-${card.rarity} card-bg-${card.type} w-[17rem] sm:w-[19rem] mx-auto p-3 flex flex-col gap-2 shadow-2xl">
             ${isHolo ? '<div class="holo-foil"></div>' : ''}
             <div class="flex items-center justify-between z-10">
-              <span class="text-base font-black ${textMain}">${card.name}</span>
+              <span class="text-base font-black ${textMain}">${escapeHtml(displayName)}</span>
               <div class="flex items-center gap-1">
                 ${card.hp ? `<span class="font-black text-lg ${isDark ? 'text-amber-300' : 'text-rose-600'}">HP${card.hp}</span>` : ''}
                 ${renderTypeBadgeSvg(card.type, 20)}
@@ -2153,21 +2187,21 @@
             </div>
             <div class="bg-white/94 rounded-2xl p-2.5 space-y-2 text-slate-800 z-10">
               ${card.collectionOnly ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-2 text-[10px] font-bold text-amber-900">このカードは開封・交換・コレクション登録に対応していますが、対戦用データが未完成のためデッキには入れられません。${card.detailStatus === 'missing' ? 'カード詳細も未登録です。' : '表示中のカード情報はコミュニティ提供データで、効果文や一部の数値は未確認です。'}${card.rarityEstimated ? ' レアリティも未確認のため暫定表示です。' : ''}${card.sourceUrl ? ` <a class="underline" href="${escapeHtml(card.sourceUrl)}" target="_blank" rel="noopener noreferrer">参照元</a>` : ''}</div>` : ''}
-              ${card.ability ? `<div class="bg-rose-50 border border-rose-200 rounded-xl p-2"><div class="text-[11px] font-black text-rose-700">特性: ${card.ability.name}</div><p class="text-[10px] leading-snug mt-0.5">${card.ability.text}</p></div>` : ''}
+              ${displayAbility ? `<div class="bg-rose-50 border border-rose-200 rounded-xl p-2"><div class="text-[11px] font-black text-rose-700">特性: ${escapeHtml(displayAbility.name)}</div>${displayAbility.text ? `<p class="text-[10px] leading-snug mt-0.5">${escapeHtml(displayAbility.text)}</p>` : ''}</div>` : ''}
               ${card.attacks ? card.attacks.map((atk, idx) => {
                 const prev = dmgPreviewList && dmgPreviewList[idx];
                 return `<div class="border-b last:border-none border-slate-200 pb-1.5 last:pb-0">
                   <div class="flex justify-between items-center">
-                    <span class="text-xs font-black flex items-center gap-1">${atk.cost.map(ct => renderTypeBadgeSvg(ct, 13)).join('')} ${atk.name}</span>
+                    <span class="text-xs font-black flex items-center gap-1">${atk.cost.map(ct => renderTypeBadgeSvg(ct, 13)).join('')} ${escapeHtml(getCardDisplayAttackName(card,atk,idx))}</span>
                     <div><span class="font-black text-base">${atk.damageLabel || atk.damage}</span>${prev ? `<span class="ml-1 px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-black text-[10px]">実ダメ:${prev.final}${prev.isWeak ? '(弱点+20)' : ''}</span>` : ''}</div>
                   </div>
-                  ${atk.text ? `<p class="text-[10px] text-slate-600 mt-0.5 leading-snug">${atk.text}</p>` : ''}
+                  ${getCardDisplayAttackEffect(card,atk,idx) ? `<p class="text-[10px] text-slate-600 mt-0.5 leading-snug">${escapeHtml(getCardDisplayAttackEffect(card,atk,idx))}</p>` : ''}
                 </div>`;
               }).join('') : ''}
-              ${card.text ? `<div class="bg-sky-50 border border-sky-200 rounded-xl p-2"><div class="text-[10px] font-black text-sky-700 mb-0.5">${card.subType === 'Supporter' ? 'サポート効果' : 'グッズ効果'}</div><p class="text-xs text-slate-800 font-bold leading-relaxed">${card.text}</p></div>` : ''}
+              ${displayCardText ? `<div class="bg-sky-50 border border-sky-200 rounded-xl p-2"><div class="text-[10px] font-black text-sky-700 mb-0.5">${card.subType === 'Supporter' ? 'サポート効果' : 'カード効果'}</div><p class="text-xs text-slate-800 font-bold leading-relaxed">${escapeHtml(displayCardText)}</p></div>` : ''}
             </div>
             <div class="flex justify-between text-[10px] font-black px-1 z-10 ${textMain}">
-              <span>${card.collectionOnly ? (card.detailStatus === 'missing' ? 'カード詳細未登録・対戦不可' : 'コレクション用・対戦不可') : card.category === 'Pokemon' ? `弱点:${card.weakness && card.weakness !== 'None' ? (TYPE_META[card.weakness]?.code || '') + '+20' : 'なし'} / にげる:${card.retreat || 0}` : 'TRAINER'}</span>
+              <span>${card.collectionOnly ? (card.detailStatus === 'missing' ? 'カード詳細未登録・対戦不可' : 'コレクション用・対戦不可') : card.category === 'Pokemon' ? `弱点:${card.weakness && card.weakness !== 'None' ? (TYPE_META[card.weakness]?.code || '') + '+20' : 'なし'} / にげる:${card.retreat || 0}` : 'トレーナー'}</span>
               <span>${card.rarityEstimated ? 'レア度未確認' : (RARITY_STARS[card.rarity] || card.rarity)} (所持:${ownedCnt})</span>
             </div>
           </div>
@@ -6473,6 +6507,8 @@ const PACK_CATALOG_DATA = {
       card.catalogKey = key;
       card.setCode = record.sourceSet;
       card.collectorNumber = record.number;
+      card.jpName = record.name;
+      card.jpDetail = JAPANESE_CARD_DETAILS[key] || null;
       card.packIds = [...record.packIds];
       card.catalogRarity = record.rarity || card.rarity || 'C';
       CARD_PRINT_MAP[key] = card;
@@ -6515,6 +6551,8 @@ const PACK_CATALOG_DATA = {
       const card = {
         id,
         name: String(detail?.nameJa || record.name),
+        jpName: String(detail?.nameJa || record.name),
+        jpDetail: detail,
         category,
         stage,
         type,
@@ -6621,6 +6659,7 @@ const PACK_CATALOG_DATA = {
             const col=collectionByPrint.get(sourceId)||null;
             const g=byPrint.get(sourceId)||(col?.alternate_versions||[]).map(v=>byPrint.get(`${v.set_code}-${String(v.id).padStart(3,'0')}`)).find(Boolean)||null;
             const card=CARD_PRINT_MAP[record.key]||null;
+            if(card){card.jpName=record.name;card.jpDetail=JAPANESE_CARD_DETAILS[record.key]||card.jpDetail||null;card.setCode=record.sourceSet;card.collectorNumber=record.number;card.catalogKey=record.key;}
             if(col){
               const mapped=this.rarityCode(col);
               if(mapped){record.rarity=mapped; if(card){card.rarity=mapped;card.catalogRarity=mapped;card.rarityEstimated=false;}}
@@ -6789,14 +6828,9 @@ const PACK_CATALOG_DATA = {
         const status = !showAll && !isComplete ? `<div class="col-span-full rounded-xl ${entry?.partialVerified?'bg-sky-50 border-sky-200 text-sky-900':'bg-amber-50 border-amber-200 text-amber-900'} border p-3 text-xs font-bold">${entry?.partialVerified?'部分照合：表示分のカード名・番号・レアリティはデータベースを確認済みです。残りの収録分は未照合です。':'このパックの完全な収録リストは未登録です。ここにはパック設定の注目カードと、ゲーム内に登録済みのカードだけを表示しています。'}</div>` : '';
         const languageNote = !showAll && entry?.nameLanguage === 'en' ? `<div class="col-span-full rounded-xl bg-sky-50 border border-sky-200 text-sky-900 p-3 text-xs font-bold">カード番号で日本語データベースと照合しました。取得済みカードは日本語名・HP・タイプ・進化段階・弱点・にげるコスト・ワザ名／ダメージ・特性名を内蔵表示します。効果文全文は各カードの参照元ページで確認できます。未取得分は別途確認できるよう参照リンクを表示します。レアリティ・英語補完データ：<a class=\"underline font-black\" href=\"https://github.com/PocketDecks/pokemon-tcg-pocket-cards\" target=\"_blank\" rel=\"noopener noreferrer\">PocketDecks v5 (AGPL-3.0-or-later)</a>。照合用：<a class="underline font-black" href="${JAPANESE_CARD_DATABASE_SOURCES.packList}" target="_blank" rel="noopener noreferrer">日本語カード・拡張パック一覧</a> ／ <a class="underline font-black" href="${JAPANESE_CARD_DATABASE_SOURCES.searchDatabase}" target="_blank" rel="noopener noreferrer">カードしらべ</a>（いずれも非公式データベース）。</div>` : '';
         const safe = (v) => String(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-        const englishDetailHtml = (card) => {
-          const d=card?.enDetail; if(!d) return '';
-          const safeText=(v)=>String(v??'').replace(/[&<>\"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch]));
-          const summary=[d.hp?`HP ${d.hp}`:'',d.type?`Type ${d.type}`:'',d.stage?`Stage ${d.stage}`:'',d.retreat!=null?`Retreat ${d.retreat}`:''].filter(Boolean).join(' · ');
-          const attacks=(d.attacks||[]).map(a=>`<div class=\"mb-1 rounded-md bg-white/70 p-1\"><b>${safeText(a.name)}</b>${a.damageLabel?` <span class=\"font-black\">${safeText(a.damageLabel)}</span>`:''}${a.cost?.length?` <span class=\"text-slate-500\">[${a.cost.map(safeText).join(' + ')}]</span>`:''}${a.text?`<div>${safeText(a.text)}</div>`:''}</div>`).join('');
-          const ability=d.ability?`<div><b>Ability: ${safeText(d.ability.name)}</b>${d.ability.text?` — ${safeText(d.ability.text)}`:''}</div>`:'';
-          const rules=d.text?`<div><b>Card text:</b> ${safeText(d.text)}</div>`:'';
-          return `<details class=\"mt-1 w-full text-left\"><summary class=\"cursor-pointer text-[9px] font-black text-amber-700\">English reference: ${safeText(d.name)} ${summary?`(${safeText(summary)})`:''}</summary><div class=\"mt-1 rounded-lg bg-amber-50 border border-amber-100 p-2 text-[9px] leading-relaxed text-slate-700 break-words\">${attacks?`<b>Attacks</b>${attacks}`:''}${ability}${rules}<div class=\"mt-1 text-[8px] text-slate-500\">Community dataset English text; Japanese translation is unavailable. Battle support is limited to fixed damage and the simple parsed effects (self-damage/heal, energy discard, bench damage, and bonuses per opponent point or attached energy); complex effects remain unsupported.</div><a class=\"text-amber-800 underline\" href=\"https://github.com/PocketDecks/pokemon-tcg-pocket-cards\" target=\"_blank\" rel=\"noopener noreferrer\">Data source / licence (AGPL-3.0-or-later)</a></div></details>`;
+        const japaneseMissingDetailHtml = (card, displayName='') => {
+          const bits=card?.hp?('HP '+card.hp):'';
+          return '<details class="mt-1 w-full text-left"><summary class="cursor-pointer text-[9px] font-black text-sky-700">日本語カード情報 '+(bits?'（'+safe(bits)+'）':'')+'</summary><div class="mt-1 rounded-lg bg-sky-50 border border-sky-100 p-2 text-[9px] leading-relaxed text-slate-700 break-words">'+(displayName?'<b>'+safe(displayName)+'</b><br>':'')+'このカードの日本語詳細データは未収録です。英語のカード情報は表示しません。</div></details>';
         };
         const jpDetailHtml = (d) => {
           if(!d) return '';
@@ -6818,32 +6852,26 @@ const PACK_CATALOG_DATA = {
             const card=c.playable;
             const jpUrl = japaneseCardReferenceUrl(c.sourceSet, c.number);
             const jpLink = jpUrl ? `<a class="mt-1 text-[9px] font-black text-sky-700 underline text-center" href="${jpUrl}" target="_blank" rel="noopener noreferrer">日本語カード情報 ↗</a>` : '';
-            const jpName=c.jpDetail?.nameJa||card.name; const jpAttack=c.jpDetail?.attacks?.[0]?.name||''; return `<div class="flex flex-col items-center rounded-xl border border-slate-200 bg-slate-50 p-2 min-w-0"><div class="cursor-pointer">${ui.renderMiniCard(card.id,{displayName:jpName,displayAttackName:jpAttack,noEnglishImage:true,onClick:`ui.openCardModal(CARD_MAP['${card.id}'])`})}</div>${c.jpDetail?`<div class="mt-1 text-[10px] font-black text-sky-800 text-center">${safe(c.jpDetail.nameJa)}</div>`:''}<div class="mt-1 text-[10px] text-slate-600 font-bold text-center">${c.number?`#${safe(c.number)} · `:''}${card.category==='Pokemon'?(card.stage==='Basic'?'たね':card.stage==='Stage1'?'1進化':'2進化'):card.subType==='Supporter'?'サポート':'トレーナー'} ・ ${RARITY_STARS[card.rarity]||card.rarity}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):englishDetailHtml(card)}${jpLink}</div>`;
+            const jpName=c.jpDetail?.nameJa||c.name||card.jpName||getCardDisplayName(card); const jpAttack=c.jpDetail?.attacks?.[0]?.name||getCardDisplayAttackName(card,card.attacks?.[0],0); return `<div class="flex flex-col items-center rounded-xl border border-slate-200 bg-slate-50 p-2 min-w-0"><div class="cursor-pointer">${ui.renderMiniCard(card.id,{displayName:jpName,displayAttackName:jpAttack,onClick:`ui.openCardModal(CARD_MAP['${card.id}'])`})}</div><div class="mt-1 text-[10px] font-black text-sky-800 text-center">${safe(jpName)}</div><div class="mt-1 text-[10px] text-slate-600 font-bold text-center">${c.number?`#${safe(c.number)} · `:''}${card.category==='Pokemon'?(card.stage==='Basic'?'たね':card.stage==='Stage1'?'1進化':'2進化'):card.subType==='Supporter'?'サポート':'トレーナー'} ・ ${RARITY_STARS[card.rarity]||card.rarity}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):japaneseMissingDetailHtml(card,jpName)}${jpLink}</div>`;
           }
           const number = c.number ? `#${safe(c.number)}` : '';
           const jpUrl = japaneseCardReferenceUrl(c.sourceSet, c.number);
           const jpLink = jpUrl ? `<a class="mt-1 inline-block text-[9px] font-black text-sky-700 underline" href="${jpUrl}" target="_blank" rel="noopener noreferrer">日本語カード名・HP・ワザ・効果を確認 ↗</a>` : '';
           const setCode = String(c.sourceSet||'A1').trim();
           const imageNum = String(c.number||'').padStart(3,'0');
-          const imageKey = c.number && EMBEDDED_CARD_IMAGES[`${setCode}-${Number(c.number)}`] ? `${setCode}-${Number(c.number)}` : '';
           const japaneseImageSource = c.number && c.sourceSet ? `https://game.pokemontcgpocket.app/ja/tcgp/${encodeURIComponent(setCode)}/${imageNum}/high.webp` : '';
           const japaneseImageUrl = japaneseImageSource ? `https://www.pokemontcgpocket.app/_next/image?q=75&url=${encodeURIComponent(japaneseImageSource)}&w=3840` : '';
-          const displayName = c.jpDetail?.nameJa || c.name;
+          const displayName = c.jpDetail?.nameJa || c.name || c.playable?.jpName || 'カード情報未登録';
           const artFallback = `<div class="aspect-[3/4] rounded-lg bg-gradient-to-br from-slate-100 via-white to-slate-200 border border-slate-200 flex flex-col items-center justify-center p-2 text-center"><div class="text-[10px] font-black text-slate-400">${number}</div><div class="text-2xl my-1">${/ex|メガ/i.test(displayName)?'⭐':'🎴'}</div><div class="text-[9px] text-slate-400 mt-1">${c.jpDetail?'日本語データ照合済み':'日本語名表示'}</div></div>`;
-          const cardArt = (japaneseImageUrl || imageKey) ? `<img src="${japaneseImageUrl || EMBEDDED_CARD_IMAGES[imageKey]}" data-fb="${imageKey}" alt="${safe(displayName)} ${number}" loading="lazy" class="w-full rounded-lg object-contain bg-slate-50" onerror="packSystem.imgFallback(this)">${artFallback.replace('flex flex-col','hidden flex-col')}` : artFallback;
-          return `<div class="flex flex-col rounded-xl border border-slate-200 bg-white p-2 min-w-0 shadow-sm">${cardArt}<div class="mt-1 text-sm font-black text-slate-900 text-center break-words">${safe(displayName)}</div><div class="mt-1 text-[10px] text-slate-500 font-bold text-center">${c.verifiedName?(c.partialVerified?'収録名・番号照合済み':'収録名確認済み'):c.featured?'注目カード（未照合）':'ゲーム内登録名'}${c.rarity?` ・ レアリティ ${safe(RARITY_STARS[c.rarity]||c.rarity)}`:' ・ レアリティ未登録'}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):englishDetailHtml(c.playable)}${jpLink}</div>`;
+          const cardArt = japaneseImageUrl ? `<img src="${japaneseImageUrl}" alt="${safe(displayName)} ${number}" loading="lazy" decoding="async" class="w-full rounded-lg object-contain bg-slate-50" onerror="packSystem.imgFallback(this)">${artFallback.replace('flex flex-col','hidden flex-col')}` : artFallback;
+          return `<div class="flex flex-col rounded-xl border border-slate-200 bg-white p-2 min-w-0 shadow-sm">${cardArt}<div class="mt-1 text-sm font-black text-slate-900 text-center break-words">${safe(displayName)}</div><div class="mt-1 text-[10px] text-slate-500 font-bold text-center">${c.verifiedName?(c.partialVerified?'収録名・番号照合済み':'収録名確認済み'):c.featured?'注目カード（未照合）':'ゲーム内登録名'}${c.rarity?` ・ レアリティ ${safe(RARITY_STARS[c.rarity]||c.rarity)}`:' ・ レアリティ未登録'}</div>${c.jpDetail?jpDetailHtml(c.jpDetail):japaneseMissingDetailHtml(c.playable,displayName)}${jpLink}</div>`;
         }).join('') + moreButton;
         grid.scrollTop = keepScroll ? prevScroll : 0;
       },
       closePackCards() { document.getElementById('modal-pack-cards').classList.add('hidden'); },
 
-      // Remote image failed: try the built-in copy once (looked up lazily), then fall back to the placeholder.
-      imgFallback(img) {
-        const emb = img.dataset.fb ? EMBEDDED_CARD_IMAGES[img.dataset.fb] : '';
-        if (emb && !img.dataset.fbTried) { img.dataset.fbTried = '1'; img.src = emb; return; }
-        img.style.display = 'none';
-        if (img.nextElementSibling) img.nextElementSibling.style.display = 'flex';
-      },
+      // Keep the Japanese card-name placeholder if a Japanese image cannot load.
+      imgFallback(img) { img.style.display='none'; if(img.nextElementSibling) img.nextElementSibling.style.display='flex'; },
 
       setSeriesFilter(s) {
         this.seriesFilter = s;
