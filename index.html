@@ -6688,6 +6688,19 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^Flip a coin\. If tails, this (?:Pokémon|Pokemon) also does (\d+) damage to itself$/i))) return {coinCount:1,selfDamageOnTails:Number(m[1])};
         if((m=t.match(/^Flip (\d+) coins?\. If both of them are heads, this attack does (\d+) more damage$/i))) return {coinCount:Number(m[1]),coinAllHeadsBonus:Number(m[2])};
         if((m=t.match(/^Flip a coin for each (?:Pokémon|Pokemon) you have in play\. This attack does (\d+) damage for each heads$/i))) return {coinPerPokemon:true,coinDamagePerHeads:Number(m[1])};
+        const statusMap={poisoned:'Poisoned',burned:'Burned',asleep:'Asleep',paralyzed:'Paralyzed',confused:'Confused'};
+        const readStatuses=raw=>{
+          const parts=String(raw||'').split(/\s+and\s+/i).map(x=>statusMap[x.trim().toLowerCase()]);
+          return parts.length>0&&parts.length<=3&&parts.every(Boolean)?parts:null;
+        };
+        let statusMatch=t.match(/^Your opponent's Active (?:Pokémon|Pokemon) is now (.+)$/i);
+        if(statusMatch){const statuses=readStatuses(statusMatch[1]);if(statuses)return {opponentStatuses:statuses};}
+        statusMatch=t.match(/^Flip a coin\. If heads, your opponent's Active (?:Pokémon|Pokemon) is now (.+)$/i);
+        if(statusMatch){const statuses=readStatuses(statusMatch[1]);if(statuses)return {opponentStatusesIfHeads:statuses};}
+        statusMatch=t.match(/^This (?:Pokémon|Pokemon) is now (.+)$/i);
+        if(statusMatch){const statuses=readStatuses(statusMatch[1]);if(statuses)return {selfStatuses:statuses};}
+        statusMatch=t.match(/^Both Active (?:Pokémon|Pokemon) are now (.+)$/i);
+        if(statusMatch){const statuses=readStatuses(statusMatch[1]);if(statuses)return {bothActiveStatuses:statuses};}
         return null;
       },
       attacksFrom(game) {
@@ -7734,7 +7747,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       createInst(cardId, turnPlayed = 0) {
         const b = CARD_MAP[cardId];
-        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], under: [] };
+        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, under: [] };
       },
 
       pickRandomEnergy(types) {
@@ -7782,6 +7795,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.cpuDifficulty = ['easy', 'normal', 'hard', 'expert'].includes(cfg.cpuDifficulty) ? cfg.cpuDifficulty : 'normal';
         this.phase = 'setup';
         this.turn = 1;
+        this.lastCheckupTurn = 0;
         this.over = false;
         this.logs = [];
         this.actionLocked = false;
@@ -7850,10 +7864,18 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!Array.isArray(inst.energies) || inst.energies.length > 100 || inst.energies.some(t => !ENERGY_TYPES.includes(t))) return null;
         const under = Array.isArray(inst.under) ? inst.under : [];
         if (under.length > 2 || under.some(id => typeof id !== 'string' || !CARD_MAP[id])) return null;
+        const allowedStatus=['Asleep','Paralyzed','Confused'];
+        const allowedStatusEffects=['Poisoned','Burned'];
+        const status=allowedStatus.includes(inst.status)?inst.status:null;
+        const rawStatusEffects=Array.isArray(inst.statusEffects)?inst.statusEffects:[];
+        if(rawStatusEffects.length>2||rawStatusEffects.some(x=>!allowedStatusEffects.includes(x))) return null;
+        const statusEffects=[...new Set(rawStatusEffects)];
+        const statusUntilTurn=Number(inst.statusUntilTurn||0);
+        if(!Number.isInteger(statusUntilTurn)||statusUntilTurn<0||statusUntilTurn>100000) return null;
         return {
           cardId: inst.cardId, hp: Math.floor(hp), maxHp: Math.floor(maxHp),
           energies: [...inst.energies], turnPlayed,
-          abilityUsed: !!inst.abilityUsed, status: null, statusEffects: [], under: [...under]
+          abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, under: [...under]
         };
       },
 
@@ -8117,9 +8139,80 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (side === 'player' && cnt > 0) sound.draw();
       },
 
+      applySpecialCondition(inst, condition) {
+        const allowed=['Poisoned','Burned','Asleep','Paralyzed','Confused'];
+        if(!inst||!allowed.includes(condition)) return false;
+        if(!Array.isArray(inst.statusEffects)) inst.statusEffects=[];
+        const labels={Poisoned:'どく',Burned:'やけど',Asleep:'ねむり',Paralyzed:'マヒ',Confused:'こんらん'};
+        if(condition==='Poisoned'||condition==='Burned'){
+          if(!inst.statusEffects.includes(condition)) inst.statusEffects.push(condition);
+        }else{
+          inst.status=condition;
+          inst.statusUntilTurn=condition==='Paralyzed'?this.turn+1:0;
+        }
+        this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}は${labels[condition]}状態になった！`);
+        return true;
+      },
+
+      clearSpecialConditions(inst) {
+        if(!inst) return;
+        inst.status=null;
+        inst.statusEffects=[];
+        inst.statusUntilTurn=0;
+      },
+
+      resolvePokemonCheckup(nextSide) {
+        const previousSide=nextSide==='player'?'opp':'player';
+        const knockedOut=[];
+        for(const owner of [previousSide,nextSide]){
+          const board=owner==='player'?this.p:this.o;
+          const inst=board?.active;
+          if(!inst) continue;
+          const effects=Array.isArray(inst.statusEffects)?inst.statusEffects:[];
+          if(effects.includes('Poisoned')){
+            inst.hp-=10;
+            this.showDmg(owner==='player'?'player-active':'opp-active',10,false);
+            this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}はどくで10ダメージを受けた！`);
+          }
+          if(effects.includes('Burned')){
+            inst.hp-=20;
+            this.showDmg(owner==='player'?'player-active':'opp-active',20,false);
+            this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}はやけどで20ダメージを受けた！`);
+            if(Math.random()<0.5){
+              inst.statusEffects=inst.statusEffects.filter(x=>x!=='Burned');
+              this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}のやけどが治った！`);
+            }
+          }
+          if(inst.status==='Asleep'){
+            if(Math.random()<0.5){
+              inst.status=null;inst.statusUntilTurn=0;
+              this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}はねむりから回復した！`);
+            }else this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}はまだねむっている…`);
+          }else if(inst.status==='Paralyzed'&&Number(inst.statusUntilTurn||0)<this.turn){
+            inst.status=null;inst.statusUntilTurn=0;
+            this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}のマヒが回復した！`);
+          }
+          if(inst.hp<=0) knockedOut.push(owner);
+        }
+        this.resolvingAttackSide=null;
+        for(const owner of knockedOut){
+          if(this.over) break;
+          this.checkKO(owner,'active',0);
+          if(owner==='player'&&this.pendingSelfKO){
+            this.pendingPromotionNext={side:nextSide,incrementTurn:false,onlinePassTurn:this.isOnlineP2P&&nextSide==='opp'};
+          }
+        }
+        if(!this.over&&!this.pendingSelfKO) this.render();
+        return !this.over&&!this.pendingSelfKO;
+      },
+
       startTurn(side) {
         if (this.over) return;
         this.currentSide = side;
+        if(this.turn>1&&this.lastCheckupTurn!==this.turn){
+          this.lastCheckupTurn=this.turn;
+          if(!this.resolvePokemonCheckup(side)) return;
+        }
         const s = side === 'player' ? this.p : this.o;
         s.supporterUsed = false; s.retreated = false; s.retreatDiscount = 0; s.dmgBonus = 0;
         if (s.active) s.active.abilityUsed = false;
@@ -8307,7 +8400,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         board.hand.splice(hIdx, 1);
         const dmg = t.maxHp - t.hp;
         t.under = [...(t.under || []), t.cardId]; t.cardId = evoId; t.maxHp = evoC.hp; t.hp = Math.max(10, evoC.hp - dmg); t.turnPlayed = this.turn; t.abilityUsed = false;
-        t.status = null; t.statusEffects = []; t.temporaryFlags = {};
+        t.status = null; t.statusEffects = []; t.statusUntilTurn = 0; t.temporaryFlags = {};
         sound.rarePull(); battleVfx.triggerBurst(side, '#0ea5e9', '#a855f7');
         this.showCutin('進化！', `${getCardDisplayName(evoC)} に進化！`);
         this.log(`${getCardDisplayName(evoC)}に進化した！`);
@@ -8539,6 +8632,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const target = victim.bench[benchIndex];
         if (!target || !victim.active) { this.render(); return false; }
         const old = victim.active;
+        this.clearSpecialConditions(old);
         victim.active = target; victim.bench[benchIndex] = old;
         this.log(`${victimSide === 'player' ? 'あなた' : '相手'}は${getCardDisplayName(CARD_MAP[target.cardId])}をバトル場に出した！`);
         this.render();
@@ -8731,6 +8825,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!source || source.cardId !== 'c_umbreon_vmax' || source.abilityUsed || !opp.active || !target) return;
         source.abilityUsed = true;
         const old = opp.active;
+        this.clearSpecialConditions(old);
         opp.active = target;
         opp.bench[benchIndex] = old;
         this.log(`ブラッキーexの「ダークシグナル」！${getCardDisplayName(CARD_MAP[target.cardId])}をバトル場に呼び出した！`);
@@ -8875,6 +8970,38 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!declaredAtk) return;
         const isGenomeHack = declaredAtk.fx === 'genome';
         if (!this.canPay(s.active, declaredAtk.cost)) { if (side === 'player') ui.toast('エネルギーが足りません！'); return; }
+        if(['Asleep','Paralyzed'].includes(s.active.status)){
+          if(side==='player') ui.toast(s.active.status==='Asleep'?'ねむり状態のためワザを使えません':'マヒ状態のためワザを使えません');
+          return;
+        }
+        if(s.active.status==='Confused'){
+          const heads=Math.random()<0.5;
+          this.log(`${getCardDisplayName(attC)}はこんらん状態！コイントス：${heads?'オモテ。ワザを使える！':'ウラ。ワザは失敗！'}`);
+          if(!heads){
+            this.resolvingAttackSide=side;
+            s.active.hp-=30;
+            this.showDmg(side==='player'?'player-active':'opp-active',30,false);
+            this.log(`${getCardDisplayName(attC)}はこんらんで自分に30ダメージ！`);
+            this.checkKO(side,'active',0);
+            this.resolvingAttackSide=null;
+            if(this.over) return;
+            this.render();
+            if(this.pendingSelfKO) return;
+            if(side==='player'){
+              if(this.isOnlineP2P){
+                this.currentSide='opp';this.log('相手のターンを待っています...');this.render();this.syncToPeer(true);
+              }else{
+                this.currentSide='opp';this.render();
+                const confusedSession=this.sessionId;
+                setTimeout(()=>{
+                  if(confusedSession!==this.sessionId||this.over||this.currentSide!=='opp'||this.isOnlineP2P)return;
+                  this.turn++;this.startTurn('opp');
+                },750);
+              }
+            }
+            return;
+          }
+        }
 
         let atk = declaredAtk;
         if (isGenomeHack && copiedAttackIdx === null) {
@@ -8993,6 +9120,13 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         opp.active.hp -= dmg;
         this.showDmg(side === 'player' ? 'opp-active' : 'player-active', dmg, prev.isWeak);
         this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に${dmg}ダメージ！${prev.isWeak ? '（弱点+20！）' : ''}`);
+        if(opp.active&&ge.opponentStatuses) ge.opponentStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
+        if(opp.active&&ge.opponentStatusesIfHeads&&coinHeads>0) ge.opponentStatusesIfHeads.forEach(status=>this.applySpecialCondition(opp.active,status));
+        if(s.active&&ge.selfStatuses) ge.selfStatuses.forEach(status=>this.applySpecialCondition(s.active,status));
+        if(ge.bothActiveStatuses){
+          if(s.active) ge.bothActiveStatuses.forEach(status=>this.applySpecialCondition(s.active,status));
+          if(opp.active) ge.bothActiveStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
+        }
 
         if (atk.fx === 'bench_all20' && opp.bench.length) {
           opp.bench.forEach(b => { b.hp -= 20; });
@@ -9025,6 +9159,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!this.over && selfDamageAttack) this.checkKO(side, 'active', 0);
         if(!this.over&&!this.pendingSelfKO&&atk.genericEffect?.switchSelf&&s.active===attackingInst&&choice&&choice.bench>=0&&s.bench[choice.bench]){
           const outgoing=s.active;
+          this.clearSpecialConditions(outgoing);
           s.active=s.bench[choice.bench];
           s.bench[choice.bench]=outgoing;
           this.log(`${getCardDisplayName(CARD_MAP[s.active.cardId])}とバトルポケモンを入れ替えた！`);
@@ -9156,6 +9291,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (this.over || this.actionLocked || this.phase !== 'play' || this.currentSide !== 'player' || this.p.retreated || !this.p.active || this.p.bench.length === 0) {
           ui.toast('今はにげられません'); return;
         }
+        if(['Asleep','Paralyzed'].includes(this.p.active.status)){ui.toast(this.p.active.status==='Asleep'?'ねむり状態のためにげられません':'マヒ状態のためにげられません');return;}
         const cost = Math.max(0, (CARD_MAP[this.p.active.cardId].retreat || 0) - this.p.retreatDiscount);
         if (this.p.active.energies.length < cost) { ui.toast(`にげるエネルギーが足りません (必要:${cost}個)`); return; }
         ui.openSelectModal(`にげる (エネ${cost}個消費) - 交代先を選択`, this.p.bench.map((b, bi) => `<div onclick="ui.closeSelectModal();battle.startRetreat(${bi},${cost});" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-sky-700 mt-1">交代</span></div>`).join(''));
@@ -9203,7 +9339,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (this.over || this.actionLocked || this.currentSide !== 'player') return;
         if (picked && picked.length) [...picked].sort((a, b) => b - a).forEach(idx => this.p.active.energies.splice(idx, 1));
         else this.p.active.energies.splice(0, cost);
-        const old = this.p.active; this.p.active = this.p.bench.splice(bi, 1)[0]; this.p.bench.push(old);
+        const old = this.p.active; this.clearSpecialConditions(old); this.p.active = this.p.bench.splice(bi, 1)[0]; this.p.bench.push(old);
         this.p.retreated = true; sound.draw();
         this.log(`${getCardDisplayName(CARD_MAP[this.p.active.cardId])}に交代した！`);
         this.render();
@@ -9472,8 +9608,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         const c = CARD_MAP[inst.cardId];
         const pct = Math.max(0, Math.round((inst.hp / inst.maxHp) * 100));
-        const canAtk = isActive && side === 'player' && !this.actionLocked && this.phase === 'play' && this.currentSide === 'player' && !this.isFirstTurnFor('player') && c.attacks.some(a => this.canPay(inst, a.cost));
+        const canAtk = isActive && side === 'player' && !this.actionLocked && this.phase === 'play' && this.currentSide === 'player' && !this.isFirstTurnFor('player') && !['Asleep','Paralyzed'].includes(inst.status) && c.attacks.some(a => this.canPay(inst, a.cost));
         const hasAb = c.ability && !c.ability.passive && !inst.abilityUsed && side === 'player' && !this.actionLocked && this.phase === 'play' && this.currentSide === 'player';
+        const conditionLabels={Poisoned:'どく',Burned:'やけど',Asleep:'ねむり',Paralyzed:'マヒ',Confused:'こんらん'};
+        const conditionHtml=[...(inst.statusEffects||[]),...(inst.status?[inst.status]:[])].map(status=>conditionLabels[status]?'<span class="px-1 py-0.5 rounded bg-slate-900/90 text-white text-[7px] font-black">'+conditionLabels[status]+'</span>':'').join('');
 
         return `
           <div ${dropAttr} onclick="battle.inspectFieldPokemon('${side}','${z}',${i})" class="pk-card border-${c.rarity} card-bg-${c.type} ${canAtk ? 'playable-glow' : ''} ${dropHighlight} ${isActive ? 'w-28 h-36 sm:w-32 sm:h-40 p-2' : 'w-20 h-28 sm:w-24 sm:h-32 p-1.5'} flex flex-col justify-between cursor-pointer relative">
@@ -9485,7 +9623,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
               <div class="${pct > 50 ? 'bg-emerald-500' : pct > 25 ? 'bg-amber-400' : 'bg-rose-500'} h-full" style="width:${pct}%"></div>
             </div>
             <div class="flex-1 rounded-lg bg-white/60 flex items-center justify-center relative overflow-hidden">
-              <div class="${isActive ? 'w-24 h-16' : 'w-16 h-11'}">${generateCardArtworkSvg(c, 'cover')}</div>
+              <div class="${isActive ? 'w-24 h-16' : 'w-16 h-11'} relative">${generateCardArtworkSvg(c, 'cover')}${conditionHtml?'<div class="absolute top-0.5 right-0.5 z-10 flex flex-col gap-0.5 pointer-events-none">'+conditionHtml+'</div>':''}</div>
               ${hasAb ? '<span class="absolute top-0.5 left-0.5 px-1 rounded bg-rose-600 text-white text-[7px] font-black">特性可</span>' : ''}
               ${canAtk ? '<span class="absolute bottom-0.5 px-1.5 rounded bg-emerald-600 text-white text-[8px] font-black animate-pulse">ワザ可!</span>' : ''}
             </div>
@@ -9541,7 +9679,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         document.getElementById('player-bench').innerHTML = [0, 1, 2].map(i => this.renderFieldSlot(this.p.bench[i], 'player', 'bench', i, false)).join('');
 
         const qBtn = document.getElementById('quick-attack-btn');
-        const showAtk = !this.actionLocked && this.phase === 'play' && this.currentSide === 'player' && !this.isFirstTurnFor('player') && this.p.active && CARD_MAP[this.p.active.cardId].attacks.some(a => this.canPay(this.p.active, a.cost));
+        const showAtk = !this.actionLocked && this.phase === 'play' && this.currentSide === 'player' && !this.isFirstTurnFor('player') && this.p.active && !['Asleep','Paralyzed'].includes(this.p.active.status) && CARD_MAP[this.p.active.cardId].attacks.some(a => this.canPay(this.p.active, a.cost));
         qBtn.classList.toggle('hidden', !showAtk);
 
         document.getElementById('player-hand').innerHTML = this.p.hand.map((id, idx) => {
