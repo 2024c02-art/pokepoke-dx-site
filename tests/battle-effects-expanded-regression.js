@@ -24,7 +24,7 @@ const cases=[
   ["If any of your [D] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 80 more damage.",'bonusIfPokemonTypeKnockedOutLastTurn','Darkness'],
 ["If your opponent's Active Pokémon is Confused, this attack does 40 more damage.","bonusIfOpponentStatus","confused"],
 ["This attack does 20 more damage for each Pokémon in your discard pile.","bonusPerDiscardedPokemon",20],
-["This attack does 20 more damage for each [P] Pokémon in your discard pile.","bonusPerDiscardedPokemonType","Psychic"],
+["This attack does 20 more damage for each [P] Pokémon in your discard pile.","bonusPerDiscardedPokemonType",20],
 ["This attack does 20 more damage for each Supporter card in your discard pile.","bonusPerDiscardedSupporter",20],
 ["This attack does 10 more damage for each Item card in your discard pile.","bonusPerDiscardedItem",10],
 ["Heal 20 damage from each of your Pokémon.","healEachOwnPokemon",20],
