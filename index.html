@@ -6883,7 +6883,7 @@ const PACK_CATALOG_DATA = {
         let m;
         if((m=t.match(/^1 of your opponent's (?:Pokémon|Pokemon) is chosen at random (\d+) times?\. For each time a (?:Pokémon|Pokemon) was chosen, do (\d+) damage to it$/i))) return {randomOpponentPokemonDamage:Number(m[2]),randomOpponentPokemonDamageCount:Number(m[1])};
         if((m=t.match(/^This attack (?:also )?does (\d+) damage to 1 of your opponent's (?:Pokémon|Pokemon)(?: that (?:has damage on it|have damage on them))?$/i))) return {opponentPokemonDamage:Number(m[1]),opponentPokemonDamageRequiresDamage:/that (?:has damage on it|have damage on them)/i.test(t)};
-        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is (Poisoned|Burned), this attack does (\d+) more damage$/i))) return {bonusIfOpponentStatus:m[1].toLowerCase(),bonusIfOpponentStatusDamage:Number(m[2])};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is (Poisoned|Burned|Asleep|Paralyzed|Confused), this attack does (\d+) more damage$/i))) return {bonusIfOpponentStatus:m[1].toLowerCase(),bonusIfOpponentStatusDamage:Number(m[2])};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is affected by a Special Condition, this attack does (\d+) more damage$/i))) return {bonusIfOpponentSpecialCondition:Number(m[1])};
         if(/^Flip a coin\. If heads, during your opponent's next turn, prevent all damage from—and effects of—attacks done to this (?:Pokémon|Pokemon)$/i.test(t)) return {preventAttackDamageNextTurnIfHeads:true};
         if(/^During your opponent's next turn, the Defending (?:Pokémon|Pokemon) can't retreat$/i.test(t)) return {defendingCannotRetreatNextTurn:true};
@@ -6956,6 +6956,14 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^This attack does (\d+) damage for each time your Pokémon used Sweets Relay during this game$/i))) return {bonusPerSweetsRelayUsedThisGame:Number(m[1])};
         if((m=t.match(/^If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does (\d+) more damage$/i))) return {bonusIfPokemonKnockedOutLastTurn:Number(m[1])};
         if((m=t.match(/^If any of your \[([GRWLPFDM])\] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does (\d+) more damage$/i))) return {bonusIfPokemonTypeKnockedOutLastTurn:this.energyMap[m[1].toUpperCase()]||null,bonusIfPokemonTypeKnockedOutLastTurnDamage:Number(m[2])};
+        if((m=t.match(/^This attack does (\d+) more damage for each \[([GRWLPFDM])\] Pokémon in your discard pile$/i))) return {bonusPerDiscardedPokemonType:Number(m[1]),discardedPokemonType:this.energyMap[m[2].toUpperCase()]||null};
+        if((m=t.match(/^This attack does (\d+) more damage for each Pokémon in your discard pile$/i))) return {bonusPerDiscardedPokemon:Number(m[1])};
+        if((m=t.match(/^This attack does (\d+) more damage for each Supporter card in your discard pile$/i))) return {bonusPerDiscardedSupporter:Number(m[1])};
+        if((m=t.match(/^This attack does (\d+) more damage for each Item card in your discard pile$/i))) return {bonusPerDiscardedItem:Number(m[1])};
+        if((m=t.match(/^Heal (\d+) damage from each of your Pokémon$/i))) return {healEachOwnPokemon:Number(m[1])};
+        if(/^This (?:Pokémon|Pokemon) recovers from all Special Conditions$/i.test(t)) return {selfClearSpecialConditions:true};
+        if(/^Heal from this (?:Pokémon|Pokemon) the same amount of damage you did to your opponent's Active (?:Pokémon|Pokemon)$/i.test(t)) return {selfHealEqualDamageDone:true};
+        if((m=t.match(/^During your next turn, this (?:Pokémon|Pokemon) can't use (.+)$/i))) return {selfCannotUseAttackNextTurn:m[1].replace(/[.!。]$/,'').trim()};
         const statusMap={poisoned:'Poisoned',burned:'Burned',asleep:'Asleep',paralyzed:'Paralyzed',confused:'Confused'};
         const readStatuses=raw=>{
           const parts=String(raw||'').split(/\s+and\s+/i).map(x=>statusMap[x.trim().toLowerCase()]);
@@ -8109,7 +8117,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       createInst(cardId, turnPlayed = 0) {
         const b = CARD_MAP[cardId];
-        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, under: [] };
+        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, attackNameBlockUntilTurn: 0, blockedAttackNames: [], under: [] };
       },
 
       pickRandomEnergy(types) {
@@ -8251,17 +8259,19 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const statusEffects=[...new Set(rawStatusEffects)];
         const statusUntilTurn=Number(inst.statusUntilTurn||0);
         if(!Number.isInteger(statusUntilTurn)||statusUntilTurn<0||statusUntilTurn>100000) return null;
-        const effectTurnFields=['preventAttackDamageUntilTurn','attackDamageReductionUntilTurn','attackDamagePenaltyUntilTurn','attackFailureOnTailsUntilTurn','retreatBlockedUntilTurn','attackBlockedUntilTurn'];
+        const effectTurnFields=['preventAttackDamageUntilTurn','attackDamageReductionUntilTurn','attackDamagePenaltyUntilTurn','attackFailureOnTailsUntilTurn','retreatBlockedUntilTurn','attackBlockedUntilTurn','attackNameBlockUntilTurn'];
         const effectTurns={};
         for(const key of effectTurnFields){const value=Number(inst[key]||0);if(!Number.isInteger(value)||value<0||value>100000)return null;effectTurns[key]=value;}
         const attackDamageReduction=Number(inst.attackDamageReduction||0);
         if(!Number.isInteger(attackDamageReduction)||attackDamageReduction<0||attackDamageReduction>200)return null;
         const attackDamagePenalty=Number(inst.attackDamagePenalty||0);
         if(!Number.isInteger(attackDamagePenalty)||attackDamagePenalty<0||attackDamagePenalty>200)return null;
+        const blockedAttackNames=Array.isArray(inst.blockedAttackNames)?inst.blockedAttackNames:[];
+        if(blockedAttackNames.length>3||blockedAttackNames.some(name=>typeof name!=='string'||name.length>100))return null;
         return {
           cardId: inst.cardId, hp: Math.floor(hp), maxHp: Math.floor(maxHp),
           energies: [...inst.energies], turnPlayed,
-          abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, ...effectTurns, attackDamageReduction, attackDamagePenalty, under: [...under]
+          abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, ...effectTurns, attackDamageReduction, attackDamagePenalty, blockedAttackNames:[...blockedAttackNames], under: [...under]
         };
       },
 
@@ -9232,6 +9242,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(atk.genericEffect?.bonusPerBenchPokemon) { const type=this.energyEffectType(atk.genericEffect.benchPokemonType); const benchCount=s.bench.filter(b=>!type||CARD_MAP[b.cardId]?.type===type).length; dmg += Number(atk.genericEffect.bonusPerBenchPokemon||0)*benchCount; }
         if(atk.genericEffect?.bonusPerDamageCounter) dmg += Number(atk.genericEffect.bonusPerDamageCounter||0)*Math.floor(Math.max(0,attInst.maxHp-attInst.hp)/10);
         if(atk.genericEffect?.bonusIfOpponentEx && defC.isEx) dmg += Number(atk.genericEffect.bonusIfOpponentEx||0);
+        if(atk.genericEffect?.bonusPerDiscardedPokemon) dmg += Number(atk.genericEffect.bonusPerDiscardedPokemon||0)*s.discard.filter(id=>CARD_MAP[id]?.category==='Pokemon').length;
+        if(atk.genericEffect?.bonusPerDiscardedPokemonType) dmg += Number(atk.genericEffect.bonusPerDiscardedPokemonType||0)*s.discard.filter(id=>CARD_MAP[id]?.category==='Pokemon'&&CARD_MAP[id]?.type===atk.genericEffect.discardedPokemonType).length;
+        if(atk.genericEffect?.bonusPerDiscardedSupporter) dmg += Number(atk.genericEffect.bonusPerDiscardedSupporter||0)*s.discard.filter(id=>CARD_MAP[id]?.category==='Trainer'&&CARD_MAP[id]?.subType==='Supporter').length;
+        if(atk.genericEffect?.bonusPerDiscardedItem) dmg += Number(atk.genericEffect.bonusPerDiscardedItem||0)*s.discard.filter(id=>CARD_MAP[id]?.category==='Trainer'&&CARD_MAP[id]?.subType!=='Supporter').length;
         if(atk.genericEffect?.bonusIfOpponentHasAbility && defC.ability) dmg += Number(atk.genericEffect.bonusIfOpponentHasAbility||0);
         if(atk.genericEffect?.bonusIfSupporterPlayedThisTurn && s.supporterUsed) dmg += Number(atk.genericEffect.bonusIfSupporterPlayedThisTurn||0);
         if(atk.genericEffect?.bonusIfOpponentIsBasic && defC.stage==='Basic') dmg += Number(atk.genericEffect.bonusIfOpponentIsBasic||0);
@@ -9477,6 +9491,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const attackingInst = s.active;
         const declaredAtk = attC.attacks[atkIdx];
         if (!declaredAtk) return;
+        if(Number(s.active.attackNameBlockUntilTurn||0)>=this.turn && Array.isArray(s.active.blockedAttackNames) && s.active.blockedAttackNames.includes(String(declaredAtk.name||''))){
+          if(side==='player')ui.toast('ワザの効果で、このワザは次の自分の番に使えません');
+          return;
+        }
         const isGenomeHack = declaredAtk.fx === 'genome';
         if (!this.canPay(s.active, declaredAtk.cost)) { if (side === 'player') ui.toast('エネルギーが足りません！'); return; }
         if(['Asleep','Paralyzed'].includes(s.active.status)){
@@ -9626,6 +9644,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (atk.fx === 'heal20') s.active.hp = Math.min(s.active.maxHp, s.active.hp + 20);
         const ge=atk.genericEffect||{};
         if(ge.selfHeal) s.active.hp=Math.min(s.active.maxHp,s.active.hp+Number(ge.selfHeal));
+        if(ge.healEachOwnPokemon){const amount=Math.max(0,Number(ge.healEachOwnPokemon)||0);[s.active,...s.bench].filter(Boolean).forEach(inst=>{inst.hp=Math.min(inst.maxHp,inst.hp+amount);});this.log(`自分のポケモン全員のHPを${amount}回復！`);}
+        if(ge.selfClearSpecialConditions){this.clearSpecialConditions(s.active);this.log(`${getCardDisplayName(attC)}は特殊状態をすべて回復した！`);}
+        if(ge.selfCannotUseAttackNextTurn){s.active.blockedAttackNames=[String(ge.selfCannotUseAttackNextTurn)];s.active.attackNameBlockUntilTurn=this.turn+1;this.log(`次の自分の番、${String(ge.selfCannotUseAttackNextTurn)}は使えない！`);}
         if(ge.discardEnergy){
           const energyType=ge.energyType||null;
           for(let n=0;n<Number(ge.discardEnergy);n++){const idx=energyType?s.active.energies.indexOf(energyType):s.active.energies.length-1;if(idx<0)break;s.active.energies.splice(idx,1);}
@@ -9660,6 +9681,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }else if(!(ge.opponentPokemonDamage>0)&&!(ge.randomOpponentPokemonDamage>0)){
           this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に0ダメージ！`);
         }
+        if(ge.selfHealEqualDamageDone && dmg>0){s.active.hp=Math.min(s.active.maxHp,s.active.hp+dmg);this.log(`${getCardDisplayName(attC)}は与えたダメージと同じ${dmg}ダメージ分、HPを回復！`);}
         if(ge.opponentPokemonDamage>0&&choice?.targetZone){
           const target=choice.targetZone==='active'?opp.active:opp.bench[choice.targetIndex];
           if(target){

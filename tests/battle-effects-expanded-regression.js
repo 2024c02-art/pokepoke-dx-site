@@ -21,7 +21,16 @@ const cases=[
   ["If 1 of your Pokémon used Sweets Relay during your last turn, this attack does 20 more damage.",'bonusIfSweetsRelayLastTurn',20],
   ["This attack does 40 damage for each time your Pokémon used Sweets Relay during this game.",'bonusPerSweetsRelayUsedThisGame',40],
   ["If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 60 more damage.",'bonusIfPokemonKnockedOutLastTurn',60],
-  ["If any of your [D] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 80 more damage.",'bonusIfPokemonTypeKnockedOutLastTurn','Darkness']
+  ["If any of your [D] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 80 more damage.",'bonusIfPokemonTypeKnockedOutLastTurn','Darkness'],
+["If your opponent's Active Pokémon is Confused, this attack does 40 more damage.","bonusIfOpponentStatus","confused"],
+["This attack does 20 more damage for each Pokémon in your discard pile.","bonusPerDiscardedPokemon",20],
+["This attack does 20 more damage for each [P] Pokémon in your discard pile.","bonusPerDiscardedPokemonType","Psychic"],
+["This attack does 20 more damage for each Supporter card in your discard pile.","bonusPerDiscardedSupporter",20],
+["This attack does 10 more damage for each Item card in your discard pile.","bonusPerDiscardedItem",10],
+["Heal 20 damage from each of your Pokémon.","healEachOwnPokemon",20],
+["This Pokémon recovers from all Special Conditions.","selfClearSpecialConditions",true],
+["Heal from this Pokémon the same amount of damage you did to your opponent's Active Pokémon.","selfHealEqualDamageDone",true],
+["During your next turn, this Pokémon can't use Frenzy Plant.","selfCannotUseAttackNextTurn","Frenzy Plant"]
 ];
 for(const [text,key,expected] of cases){const parsed=parse.call(ctx,text);assert.ok(parsed,'unparsed effect: '+text);assert.equal(parsed[key],expected,'wrong parsed value: '+text);}
 
@@ -32,10 +41,14 @@ const calcSource=html.slice(calcStart,calcEnd);
 const calc=new Function('CARD_MAP',`return ({${calcSource}}).calcDamagePreview;`)({
   attacker:{type:'Fire',weakness:'None'},
   targetAbility:{type:'Water',weakness:'None',stage:'Stage1',ability:{name:'Test Ability'}},
-  targetBasic:{type:'Water',weakness:'None',stage:'Basic',ability:null}
+  targetBasic:{type:'Water',weakness:'None',stage:'Basic',ability:null},
+  grassDiscard:{category:'Pokemon',type:'Grass'},
+  psychicDiscard:{category:'Pokemon',type:'Psychic'},
+  supporterDiscard:{category:'Trainer',subType:'Supporter'},
+  itemDiscard:{category:'Trainer',subType:'Item'}
 });
 const engine={
-  p:{points:0,supporterUsed:false,dmgBonus:0,bench:[],lastKOByOpponentAttack:{turn:-1,types:[]},sweetsRelayUsedTurn:-1,sweetsRelayUses:0},
+  p:{points:0,supporterUsed:false,dmgBonus:0,bench:[],discard:['grassDiscard','psychicDiscard','supporterDiscard','itemDiscard'],lastKOByOpponentAttack:{turn:-1,types:[]},sweetsRelayUsedTurn:-1,sweetsRelayUses:0},
   o:{points:0,active:{energies:[]},bench:[]},
   turn:3,
   energyEffectType:code=>ctx.energyMap[String(code||'').toUpperCase()]||null,
@@ -62,6 +75,10 @@ assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfPoke
 assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfPokemonTypeKnockedOutLastTurn:'Darkness',bonusIfPokemonTypeKnockedOutLastTurnDamage:80}},def,'player').final,130,'typed KO last-turn bonus');
 attacker.attackDamagePenalty=20;attacker.attackDamagePenaltyUntilTurn=3;
 assert.equal(calc.call(engine,attacker,baseAttack,def,'player').final,30,'temporary outgoing attack damage reduction');
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusPerDiscardedPokemon:10}},def,'player').final,70,'discarded Pokemon bonus');
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusPerDiscardedPokemonType:15,discardedPokemonType:'Psychic'}},def,'player').final,65,'discarded type bonus');
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusPerDiscardedSupporter:20}},def,'player').final,70,'discarded Supporter bonus');
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusPerDiscardedItem:10}},def,'player').final,60,'discarded Item bonus');
 assert.match(html,/opponentItemLockNextTurn/);
 assert.match(html,/c\.subType!=='Supporter' && Number\(s\.itemBlockedUntilTurn\|\|0\)>=this\.turn/);
 assert.match(html,/c\.subType!=='Supporter'&&Number\(this\.p\.itemBlockedUntilTurn\|\|0\)>=this\.turn/);
@@ -70,6 +87,11 @@ assert.match(html,/trainerBlockedUntilTurn: Number\(this\.p\.trainerBlockedUntil
 assert.match(html,/attackDamagePenaltyUntilTurn/);
 assert.match(html,/opponentTrainerLockNextTurn/);
 assert.match(html,/attackFailureOnTailsUntilTurn/);
+assert.match(html,/attackNameBlockUntilTurn/);
+assert.match(html,/healEachOwnPokemon/);
+assert.match(html,/selfClearSpecialConditions/);
+assert.match(html,/selfHealEqualDamageDone/);
+assert.match(html,/blockedAttackNames/);
 assert.match(html,/lastKOByOpponentAttack/);
 assert.match(html,/sweetsRelayUsedTurn/);
 console.log('All expanded battle-effect regression checks passed.');

@@ -1,0 +1,26 @@
+name: Validate follow-up battle effect coverage
+on:
+  push:
+    branches:
+      - work/effect-coverage-2026-11-26
+    paths:
+      - "index.html"
+      - "tests/battle-effects-expanded-regression.js"
+      - ".github/workflows/validate-followup-battle-effects.yml"
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run card, battle, deck, and evolution regressions
+        run: |
+          set -euo pipefail
+          node tests/card-info-verification-regression.js
+          node tests/card-info-verification-expanded-regression.js
+          node tests/battle-effects-regression.js
+          node tests/battle-effects-expanded-regression.js
+          node tests/deck-builder-regression.js
+          node tests/dragonite-regression.js
+          node tests/rare-candy-regression.js
