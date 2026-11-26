@@ -27,7 +27,7 @@ for (const [label, pattern] of checks) {
   }
 }
 if (failed) {
-  console.error(`\\n${failed} regression check(s) failed.`);
+  console.error(`\n${failed} regression check(s) failed.`);
   process.exit(1);
 }
-console.log(`\\nAll ${checks.length} battle-effect regression checks passed.`);
+console.log(`\nAll ${checks.length} battle-effect regression checks passed.`);
