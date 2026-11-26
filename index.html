@@ -1537,7 +1537,7 @@
     function normalizeEvolutionToken(value) {
       const raw = String(value ?? '').trim();
       const normalized = typeof raw.normalize === 'function' ? raw.normalize('NFKC') : raw;
-      return normalized.toLowerCase().replace(/[\\s　]+/g, '');
+      return normalized.toLowerCase().replace(/[\s　]+/g, '');
     }
     function getCardEvolutionNameAliases(cardOrId) {
       const card = typeof cardOrId === 'string' ? CARD_MAP[cardOrId] : cardOrId;
