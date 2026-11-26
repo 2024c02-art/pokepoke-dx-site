@@ -77,6 +77,7 @@ assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfPoke
 assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfPokemonTypeKnockedOutLastTurn:'Darkness',bonusIfPokemonTypeKnockedOutLastTurnDamage:80}},def,'player').final,130,'typed KO last-turn bonus');
 attacker.attackDamagePenalty=20;attacker.attackDamagePenaltyUntilTurn=3;
 assert.equal(calc.call(engine,attacker,baseAttack,def,'player').final,30,'temporary outgoing attack damage reduction');
+attacker.attackDamagePenalty=0;attacker.attackDamagePenaltyUntilTurn=0;
 assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusPerDiscardedPokemon:10}},def,'player').final,70,'discarded Pokemon bonus');
 assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusPerDiscardedPokemonType:15,discardedPokemonType:'Psychic'}},def,'player').final,65,'discarded type bonus');
 assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusPerDiscardedSupporter:20}},def,'player').final,70,'discarded Supporter bonus');
