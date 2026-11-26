@@ -27,6 +27,9 @@ const checks = [
   ['retreat lock is enforced', /retreatBlockedUntilTurn/],
   ['attack lock is enforced', /attackBlockedUntilTurn/],
   ['temporary effects are visible in card details', /temporaryEffectSummary/],
+  ['next-turn Supporter lock is parsed', /opponentSupporterLockNextTurn/],
+  ['Supporter lock is enforced by availability checks', /supporterBlockedUntilTurn\|\|0\)<this\.turn/],
+  ['Supporter lock is preserved in online board snapshots', /supporterBlockedUntilTurn/],
 ];
 let failed = 0;
 for (const [label, pattern] of checks) {
