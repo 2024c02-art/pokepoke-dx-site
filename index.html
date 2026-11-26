@@ -928,7 +928,7 @@
         <button onclick="deckBuilder.setFilter('ALL')" class="filter-btn px-3 py-1 rounded-xl bg-sky-600 text-white text-xs font-extrabold" data-filter="ALL">すべて</button>
         <button onclick="deckBuilder.setFilter('Pokemon')" class="filter-btn px-3 py-1 rounded-xl bg-white text-slate-700 border border-slate-200 text-xs font-bold" data-filter="Pokemon">ポケモン</button>
         <button onclick="deckBuilder.setFilter('Trainer')" class="filter-btn px-3 py-1 rounded-xl bg-white text-slate-700 border border-slate-200 text-xs font-bold" data-filter="Trainer">トレーナーズ</button>
-        <input type="text" id="deck-search" oninput="deckBuilder.render()" placeholder="カード名・ワザ・特性検索..." class="ml-auto bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-800 w-full sm:w-52" />
+        <input type="text" id="deck-search" oninput="deckBuilder.searchCards()" placeholder="カード名・ワザ・特性検索..." class="ml-auto bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-800 w-full sm:w-52" />
       </div>
 
       <div id="collection-progress-panel" class="hidden pocket-glass rounded-2xl p-3 sm:p-4 space-y-3"></div>
@@ -7352,10 +7352,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
     /* ==================== 10. 20枚デッキビルダー＆図鑑 ==================== */
     const deckBuilder = {
-      filter: 'ALL', viewMode: 'build', currentSlot: 0, tempDeck: [], tempEnergies: ['Fire'], tempName: '', dexLimit: 72,
+      filter: 'ALL', viewMode: 'build', currentSlot: 0, tempDeck: [], tempEnergies: ['Fire'], tempName: '', dexLimit: 72, poolLimit: 72,
 
       init() {
         this.currentSlot = accountMgr.data.activeDeckSlot || 0;
+        this.dexLimit = 72; this.poolLimit = 72;
         if(!this._supplementLoading && CARD_DATA_SUPPLEMENT.gameplayLoaded.size<CARD_DATA_SUPPLEMENT.sourceCodes.length){
           this._supplementLoading=true; ui.toast('追加カードの対戦データを読み込み中…');
           CARD_DATA_SUPPLEMENT.loadAllGameplay().then(()=>{this._supplementLoading=false;this.render();ui.toast('固定ダメージ・対応済み簡易効果の追加ポケモンをデッキに使えるようにしました');}).catch(()=>{this._supplementLoading=false;ui.toast('追加データ取得に失敗。既存カードは引き続き使用できます');});
@@ -7401,19 +7402,26 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       },
 
       setViewMode(m) {
-        this.viewMode = m; this.dexLimit = 72;
+        this.viewMode = m; this.dexLimit = 72; this.poolLimit = 72;
         document.getElementById('tab-mode-build').className = m === 'build' ? 'px-3 py-1 rounded-lg bg-white text-slate-900 shadow-xs text-xs font-black' : 'px-3 py-1 rounded-lg text-slate-600 text-xs font-black';
         document.getElementById('tab-mode-dex').className = m === 'dex' ? 'px-3 py-1 rounded-lg bg-white text-slate-900 shadow-xs text-xs font-black' : 'px-3 py-1 rounded-lg text-slate-600 text-xs font-black';
         this.render();
       },
 
       setFilter(f) {
-        this.filter = f; this.dexLimit = 72;
+        this.filter = f; this.dexLimit = 72; this.poolLimit = 72;
         document.querySelectorAll('.filter-btn').forEach(b => {
           b.className = b.dataset.filter === f ? 'filter-btn px-3 py-1 rounded-xl bg-sky-600 text-white text-xs font-extrabold' : 'filter-btn px-3 py-1 rounded-xl bg-white text-slate-700 border border-slate-200 text-xs font-bold';
         });
         this.render();
       },
+
+      searchCards() {
+        this.dexLimit = 72; this.poolLimit = 72;
+        this.render();
+      },
+
+      showMoreBuild() { this.poolLimit += 72; this.render(); },
 
       getOwnershipIssues(cards) {
         const neededById = {};
@@ -7639,7 +7647,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         const q = (document.getElementById('deck-search')?.value || '').trim().toLowerCase();
         const filtered = CARDS.filter(c => (this.viewMode === 'dex' || !c.collectionOnly) && (this.filter === 'ALL' || c.category === this.filter) && (!q || `${getCardDisplayName(c)} ${c.jpName||''}`.toLowerCase().includes(q)));
-        const visibleCards = this.viewMode === 'dex' ? filtered.slice(0, this.dexLimit) : filtered;
+        const visibleCards = filtered.slice(0, this.viewMode === 'dex' ? this.dexLimit : this.poolLimit);
         const costMap = { C: 35, U: 70, R: 150, RR: 250, SR: 400, SAR: 600, UR: 800, AR: 100, S: 100, SSR: 100, IM: 100 };
 
         document.getElementById('pool-grid').innerHTML = visibleCards.map(c => {
@@ -7649,7 +7657,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             return `<div class="flex flex-col items-center bg-white/85 p-2 rounded-2xl border border-slate-200">${ui.renderMiniCard(c.id, { unowned: owned === 0, onClick: `ui.openCardModal(CARD_MAP['${c.id}'])` })}<div class="flex justify-between w-full mt-1.5 px-1"><span class="text-[10px] font-bold">所持:${owned}</span><button onclick="deckBuilder.craftCard('${c.id}')" class="px-2 py-0.5 rounded bg-fuchsia-600 text-white text-[10px] font-black">交換 ${c.rarityEstimated ? 100 : (costMap[c.rarity] || 100)}P</button></div></div>`;
           }
           return `<div class="flex flex-col items-center bg-white/85 p-2 rounded-2xl border border-slate-200">${ui.renderMiniCard(c.id, { unowned: owned === 0, onClick: `ui.openCardModal(CARD_MAP['${c.id}'])` })}<div class="flex justify-between w-full mt-1.5 px-1"><span class="text-[10px] font-bold">${inD}/2 (所持:${owned})</span><div class="flex gap-1"><button onclick="deckBuilder.removeCard('${c.id}')" class="w-6 h-6 rounded bg-slate-200 font-black">-</button><button onclick="deckBuilder.addCard('${c.id}')" class="w-6 h-6 rounded bg-emerald-500 text-white font-black">+</button></div></div></div>`;
-        }).join('') + (this.viewMode === 'dex' && visibleCards.length < filtered.length ? `<button onclick="deckBuilder.showMoreDex()" class="col-span-full py-3 rounded-xl bg-sky-100 text-sky-800 text-xs font-black">さらに72枚表示（残り${filtered.length - visibleCards.length}枚）</button>` : '');
+        }).join('') + (visibleCards.length < filtered.length ? `<button onclick="deckBuilder.${this.viewMode === 'dex' ? 'showMoreDex' : 'showMoreBuild'}()" class="col-span-full py-3 rounded-xl bg-sky-100 text-sky-800 text-xs font-black">さらに72枚表示（残り${filtered.length - visibleCards.length}枚）</button>` : '');
 
         const counts = {}; let pC = 0, tC = 0;
         this.tempDeck.forEach(id => {
