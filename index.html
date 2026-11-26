@@ -744,6 +744,19 @@
         <button onclick="onlineLobby.setTab('cpu')" class="lobby-tab px-5 py-2.5 rounded-2xl bg-white text-slate-700 border border-slate-200 text-xs sm:text-sm font-black" data-tab="cpu">CPU対戦 (練習)</button>
       </div>
 
+      <div id="lobby-active-deck-panel" class="w-full pocket-glass rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="flex-1 min-w-0 space-y-1">
+          <div class="text-[10px] font-black text-slate-500">自分が対戦で使うデッキ</div>
+          <select id="lobby-deck-selector" onchange="accountMgr.selectActiveDeck(this.value)" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-black text-slate-800"></select>
+          <div id="lobby-active-deck-name" class="text-[10px] font-bold text-slate-600 truncate">使用デッキ</div>
+        </div>
+        <div class="flex flex-col items-start sm:items-end gap-1">
+          <div class="text-[9px] font-black text-slate-500">発生エネルギー候補</div>
+          <div id="lobby-active-deck-energies" class="flex items-center gap-1"></div>
+          <div class="text-[8px] text-slate-500">選択したタイプから毎ターン1個がランダムに発生</div>
+        </div>
+      </div>
+
       <!-- タブ1: オンラインレート戦 -->
       <div id="lobby-panel-ranked" class="w-full pocket-glass rounded-3xl p-6 space-y-5">
         <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-indigo-950 via-purple-900 to-rose-900 text-white p-5 rounded-2xl shadow-lg">
@@ -976,6 +989,7 @@
       <div id="battle-topbar" class="bg-white/92 backdrop-blur-md border-b border-slate-200 px-3 py-1.5 flex items-center justify-between text-xs z-20 gap-2">
         <div class="flex items-center gap-2 overflow-x-auto">
           <span id="battle-mode-badge" class="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 font-black shrink-0">CPU戦</span>
+          <span id="battle-player-deck-label" class="px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 font-black shrink-0">デッキ: --</span>
           <span id="battle-turn-badge" class="px-3 py-0.5 rounded-full bg-sky-100 border border-sky-300 text-sky-800 font-black shrink-0">ターン 1</span>
           <span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-black shrink-0">3ポイント先取</span>
         </div>
@@ -1050,6 +1064,10 @@
                     <span class="text-[7px] text-slate-300 font-bold">NEXT</span>
                     <div id="next-energy-orb" class="w-5 h-5 rounded-full border border-white/70 flex items-center justify-center text-[8px] font-black bg-slate-800 text-white">?</div>
                   </div>
+                </div>
+                <div class="flex items-center justify-center gap-1 min-h-[14px]">
+                  <span class="text-[7px] text-sky-200 font-bold">候補</span>
+                  <span id="battle-energy-type-pool" class="flex items-center gap-0.5"></span>
                 </div>
                 <div class="text-[8px] font-bold text-amber-300 text-center leading-tight">ドラッグorタップ</div>
               </div>
@@ -1516,6 +1534,44 @@
         total + (getDeckCardIdentity(id) === identity ? 1 : 0), 0);
     }
 
+    function normalizeEvolutionToken(value) {
+      const raw = String(value ?? '').trim();
+      const normalized = typeof raw.normalize === 'function' ? raw.normalize('NFKC') : raw;
+      return normalized.toLowerCase().replace(/[\\s　]+/g, '');
+    }
+    function getCardEvolutionNameAliases(cardOrId) {
+      const card = typeof cardOrId === 'string' ? CARD_MAP[cardOrId] : cardOrId;
+      if (!card) return [];
+      const names = [card.name, card.jpName, card.sourceNameEN, card.enDetail?.name, card.jpDetail?.nameJa];
+      return [...new Set(names.map(normalizeEvolutionToken).filter(Boolean))];
+    }
+    function isEvolutionFrom(evolutionCardOrId, previousCardOrId) {
+      const evolutionCard = typeof evolutionCardOrId === 'string' ? CARD_MAP[evolutionCardOrId] : evolutionCardOrId;
+      if (!evolutionCard) return false;
+      const previousNames = new Set(getCardEvolutionNameAliases(previousCardOrId));
+      if (!previousNames.size) return false;
+      const parentNames = [
+        evolutionCard.evolvesFrom,
+        evolutionCard.enDetail?.evolvesFrom,
+        evolutionCard.jpDetail?.evolvesFrom,
+        evolutionCard.jpDetail?.evolvesFromName
+      ].map(normalizeEvolutionToken).filter(Boolean);
+      return parentNames.some(name => previousNames.has(name));
+    }
+    function isRareCandyCard(cardOrId) {
+      const card = typeof cardOrId === 'string' ? CARD_MAP[cardOrId] : cardOrId;
+      if (!card) return false;
+      if (card.id === 't_rare_candy') return true;
+      const knownNames = new Set(['ふしぎなアメ', 'ふしぎなあめ', '不思議なアメ', 'rare candy']);
+      return [card.name, card.jpName, card.sourceNameEN, card.enDetail?.name]
+        .map(normalizeEvolutionToken).some(name => knownNames.has(name));
+    }
+    function normalizeEnergyTypes(types) {
+      const valid = Array.isArray(types) ? types.filter(type => typeof type === 'string' && ENERGY_TYPES.includes(type)) : [];
+      const unique = [...new Set(valid)].slice(0, 3);
+      return unique.length ? unique : ['Fire'];
+    }
+
     /* v31: effects are keyed by (card id : attack name) so same-named attacks on other cards can never collide. */
     const ATTACK_FX = {
       'c_charizard_ex:ぐれんのあらし': 'trash2', 'c_mewtwo_ex:サイコドライブ': 'trash2',
@@ -1664,7 +1720,7 @@
             .filter(d => d && typeof d === 'object' && Array.isArray(d.cards))
             .map(d => ({
               name: typeof d.name === 'string' && d.name.trim() ? d.name.slice(0, 50) : 'マイデッキ',
-              energies: Array.isArray(d.energies) ? [...new Set(d.energies.filter(t => ENERGY_TYPES.includes(t)))].slice(0, 3) : [],
+              energies: normalizeEnergyTypes(d.energies),
               cards: [...d.cards]
             }))
             // Defer gameplay/ownership validation until supplemental card shards are loaded.
@@ -1706,12 +1762,19 @@
 
       getActiveDeck() {
         const decks = this.data?.decks || [];
-        return decks[Math.min(this.data?.activeDeckSlot || 0, decks.length - 1)] || PRESET_DECKS.charizard;
+        const index = Number(this.data?.activeDeckSlot);
+        const selected = Number.isInteger(index) ? decks[index] : null;
+        const deck = selected || PRESET_DECKS.charizard;
+        return { ...deck, cards: [...(deck.cards || [])], energies: normalizeEnergyTypes(deck.energies) };
       },
 
-      selectActiveDeck(idx) {
-        this.data.activeDeckSlot = Number(idx); this.saveCurrent();
-        ui.toast(`使用デッキを「${this.getActiveDeck().name}」に変更しました`);
+      selectActiveDeck(idx, silent = false) {
+        const index = Number(idx), decks = this.data?.decks || [];
+        if (!Number.isInteger(index) || index < 0 || index >= decks.length) return false;
+        this.data.activeDeckSlot = index;
+        this.saveCurrent();
+        if (!silent) ui.toast(`使用デッキを「${this.getActiveDeck().name}」に変更しました`);
+        return true;
       },
 
       refreshUI() {
@@ -1724,8 +1787,11 @@
         document.getElementById('header-rank-badge').textContent = `${rk.title} • ${this.data.rating}RP`;
         document.getElementById('home-record-badge').textContent = `${this.data.rating} RP • ${this.data.wins || 0}勝 / ${this.data.streak || 0}連勝`;
 
+        const deckOptions = (this.data.decks || []).map((d, i) => `<option value="${i}" ${i === this.data.activeDeckSlot ? 'selected' : ''}>${escapeHtml(d.name)} (${d.cards.length}枚)</option>`).join('');
         const sel = document.getElementById('home-deck-selector');
-        if (sel) sel.innerHTML = (this.data.decks || []).map((d, i) => `<option value="${i}" ${i === this.data.activeDeckSlot ? 'selected' : ''}>${escapeHtml(d.name)} (${d.cards.length}枚)</option>`).join('');
+        const lobbySel = document.getElementById('lobby-deck-selector');
+        if (sel) sel.innerHTML = deckOptions;
+        if (lobbySel) lobbySel.innerHTML = deckOptions;
         const ad = this.getActiveDeck();
         const ok = ad.cards.length === 20;
         const vEl = document.getElementById('home-deck-valid');
@@ -1733,8 +1799,13 @@
           vEl.textContent = ok ? 'OK • 20枚' : `${ad.cards.length}/20枚`;
           vEl.className = ok ? 'text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-black' : 'text-[10px] px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-black';
         }
+        const energyBadges = normalizeEnergyTypes(ad.energies).map(t => renderTypeBadgeSvg(t, 16)).join('');
         const eEl = document.getElementById('home-deck-energies');
-        if (eEl) eEl.innerHTML = (ad.energies || ['Fire']).map(t => renderTypeBadgeSvg(t, 16)).join('');
+        if (eEl) eEl.innerHTML = energyBadges;
+        const lobbyName = document.getElementById('lobby-active-deck-name');
+        if (lobbyName) lobbyName.textContent = `${ad.name} • ${ad.cards.length}枚`;
+        const lobbyEnergies = document.getElementById('lobby-active-deck-energies');
+        if (lobbyEnergies) lobbyEnergies.innerHTML = normalizeEnergyTypes(ad.energies).map(t => renderTypeBadgeSvg(t, 16)).join('');
       },
 
       openModal() {
@@ -7380,7 +7451,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         document.getElementById('deck-name-input').value = this.tempName;
       },
 
-      switchSlot(i) { this.currentSlot = Number(i); this.loadSlot(); this.render(); },
+      switchSlot(i) {
+        const slot = Number(i);
+        if (!accountMgr.selectActiveDeck(slot, true)) return;
+        this.currentSlot = slot; this.loadSlot(); this.render();
+      },
 
       toggleEnergyType(t) {
         const idx = this.tempEnergies.indexOf(t);
@@ -7398,6 +7473,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (accountMgr.data.decks.length >= 8) { ui.toast('デッキスロットは最大8個です'); return; }
         accountMgr.data.decks.push({ name: `マイデッキ ${accountMgr.data.decks.length + 1}`, energies: [...PRESET_DECKS.charizard.energies], cards: [...PRESET_DECKS.charizard.cards] });
         this.currentSlot = accountMgr.data.decks.length - 1;
+        accountMgr.data.activeDeckSlot = this.currentSlot;
         accountMgr.saveCurrent(); this.loadSlot(); this.render();
       },
 
@@ -7854,11 +7930,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       },
 
       pickRandomEnergy(types) {
-        const list = types && types.length > 0 ? types : ['Fire'];
+        const list = normalizeEnergyTypes(types);
         return list[Math.floor(Math.random() * list.length)];
       },
 
       initSide(deckIds, energyTypes, name, autoPlace = false) {
+        const selectedEnergyTypes = normalizeEnergyTypes(energyTypes);
         let deck = this.shuffle(deckIds), hand = [], tries = 0;
         while (tries++ < 40) {
           deck = this.shuffle(deckIds);
@@ -7879,8 +7956,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         return {
           name, deck, hand, discard: [], active, bench,
-          points: 0, energyTypes: [...(energyTypes || ['Fire'])],
-          currentEnergy: null, nextEnergy: this.pickRandomEnergy(energyTypes),
+          points: 0, energyTypes: [...selectedEnergyTypes],
+          currentEnergy: null, nextEnergy: this.pickRandomEnergy(selectedEnergyTypes),
           supporterUsed: false, supporterBlockedUntilTurn: 0, retreated: false, retreatDiscount: 0, dmgBonus: 0
         };
       },
@@ -7910,6 +7987,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.pendingSelfKO = false;
 
         const pd = accountMgr.getActiveDeck();
+        const playerDeckLabel = document.getElementById('battle-player-deck-label');
+        if (playerDeckLabel) playerDeckLabel.textContent = `デッキ: ${pd.name} • ${pd.cards.length}枚`;
         const presetOpp = PRESET_DECKS[cfg.oppDeckKey] || PRESET_DECKS.pikachu;
         const oppCards = cfg.oppCustomDeck || presetOpp.cards;
         const oppEnergies = cfg.oppEnergies || presetOpp.energies;
@@ -8449,7 +8528,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (this.currentSide !== 'player') return false;
         if (c.category === 'Pokemon') {
           if (c.stage === 'Basic') return this.p.bench.length < 3;
-          return this.canEvolveNow('player') && [this.p.active, ...this.p.bench].filter(Boolean).some(p => CARD_MAP[p.cardId].name === c.evolvesFrom && p.turnPlayed < this.turn);
+          return this.canEvolveNow('player') && [this.p.active, ...this.p.bench].filter(Boolean).some(p => isEvolutionFrom(c, CARD_MAP[p.cardId]) && p.turnPlayed < this.turn);
         }
         if (c.category === 'Trainer') return c.subType === 'Supporter' ? this.canUseSupporter('player') : true;
         return false;
@@ -8483,8 +8562,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             if (this.isOnlineP2P) this.syncToPeer(false);
           } else {
             if (!this.canEvolveNow('player')) { ui.toast('最初のターンは進化できません'); return; }
-            const cands = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))].filter(t => t.inst && CARD_MAP[t.inst.cardId].name === c.evolvesFrom && t.inst.turnPlayed < this.turn);
-            if (cands.length === 0) { ui.toast(`進化元「${c.evolvesFrom}」が場にいないか出したばかりです`); return; }
+            const cands = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))].filter(t => t.inst && isEvolutionFrom(c, CARD_MAP[t.inst.cardId]) && t.inst.turnPlayed < this.turn);
+            if (cands.length === 0) { ui.toast('進化できるポケモンが場にいないか、出したばかりです'); return; }
             ui.openSelectModal(`${getCardDisplayName(c)} に進化するポケモンを選択`, cands.map(t => `<div onclick="battle.evolve(${idx},'${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-emerald-700 mt-1">進化する</span></div>`).join(''));
           }
           return;
@@ -8506,10 +8585,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!evoC || !t || evoC.category !== 'Pokemon' || evoC.stage === 'Basic') return false;
         const baseC = CARD_MAP[t.cardId];
         if (!baseC || t.turnPlayed >= this.turn) return false;
-        const directLine = evoC.evolvesFrom === baseC.name;
+        const directLine = isEvolutionFrom(evoC, baseC);
         const rareCandyLine = allowRareCandy && baseC.stage === 'Basic' && evoC.stage === 'Stage2' &&
           CARDS.some(c => c.category === 'Pokemon' && c.stage === 'Stage1' &&
-            c.evolvesFrom === baseC.name && evoC.evolvesFrom === c.name);
+            isEvolutionFrom(c, baseC) && isEvolutionFrom(evoC, c));
         if (!directLine && !rareCandyLine) return false;
         board.hand.splice(hIdx, 1);
         const dmg = t.maxHp - t.hp;
@@ -8535,9 +8614,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         for (const evoId of stage2) {
           const evo = CARD_MAP[evoId];
           for (const base of field) {
-            const baseName = CARD_MAP[base.inst.cardId].name;
+            const baseCard = CARD_MAP[base.inst.cardId];
             const hasMatchingStage1 = CARDS.some(c => c.category === 'Pokemon' && c.stage === 'Stage1' &&
-              c.evolvesFrom === baseName && evo.evolvesFrom === c.name);
+              isEvolutionFrom(c, baseCard) && isEvolutionFrom(evo, c));
             if (!hasMatchingStage1) continue;
             const key = `${evoId}|${base.z}|${base.i}`;
             if (!unique.has(key)) unique.set(key, { evoCardId: evoId, z: base.z, i: base.i, baseId: base.inst.cardId });
@@ -8546,11 +8625,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return [...unique.values()];
       },
 
-      resolveRareCandy(side, evoCardId, z, i) {
+      resolveRareCandy(side, evoCardId, z, i, candyCardId = 't_rare_candy') {
         const board = side === 'player' ? this.p : this.o;
         const valid = this.getRareCandyOptions(side).some(x => x.evoCardId === evoCardId && x.z === z && x.i === i);
         const evoIdx = board.hand.indexOf(evoCardId);
-        const candyIdx = board.hand.indexOf('t_rare_candy');
+        const candyIdx = board.hand.indexOf(candyCardId);
         if (!valid || evoIdx < 0 || candyIdx < 0) {
           if (side === 'player') { this.pendingRareCandy = false; this.actionLocked = false; ui.toast('手札または進化対象が変わったため、ふしぎなアメを使えません'); this.render(); }
           return false;
@@ -8561,9 +8640,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if (side === 'player') { this.pendingRareCandy = false; this.actionLocked = false; this.render(); }
           return false;
         }
-        const currentCandyIdx = board.hand.indexOf('t_rare_candy');
+        const currentCandyIdx = board.hand.indexOf(candyCardId);
         if (currentCandyIdx >= 0) board.hand.splice(currentCandyIdx, 1);
-        board.discard.push('t_rare_candy');
+        board.discard.push(candyCardId);
         if (side === 'player') { this.pendingRareCandy = false; this.actionLocked = false; }
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
@@ -8623,7 +8702,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
 
         // Rare Candy stays in hand until the player confirms a legal target.
-        if (c.id === 't_rare_candy') {
+        if (isRareCandyCard(c)) {
           const opts = this.getRareCandyOptions(side);
           if (!opts.length) {
             if (side === 'player') ui.toast('ふしぎなアメを使える進化先がありません');
@@ -8631,12 +8710,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }
           if (side === 'player') {
             this.pendingRareCandy = true; this.actionLocked = true;
-            const html = opts.map(o => `<div onclick="battle.resolveRareCandy('player','${o.evoCardId}','${o.z}',${o.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(o.evoCardId)}<span class="text-xs font-black text-emerald-700 mt-1">${escapeHtml(getCardDisplayName(CARD_MAP[o.baseId]))}から進化</span></div>`).join('');
+            const html = opts.map(o => `<div onclick="battle.resolveRareCandy('player',${JSON.stringify(o.evoCardId)},'${o.z}',${o.i},${JSON.stringify(id)});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(o.evoCardId)}<span class="text-xs font-black text-emerald-700 mt-1">${escapeHtml(getCardDisplayName(CARD_MAP[o.baseId]))}から進化</span></div>`).join('');
             this.render();
             ui.openSelectModal('ふしぎなアメ：進化させるポケモンを選択', html, true);
           } else {
             const o = opts[0];
-            if (o) this.resolveRareCandy('opp', o.evoCardId, o.z, o.i);
+            if (o) this.resolveRareCandy('opp', o.evoCardId, o.z, o.i, id);
           }
           return;
         }
@@ -9616,7 +9695,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         for (const slot of boardSlots()) {
           if (!slot.inst || slot.inst.turnPlayed >= this.turn) continue;
           const evolutions = o.hand.map((id, hIdx) => ({ id, hIdx, c: CARD_MAP[id] }))
-            .filter(x => x.c?.category === 'Pokemon' && x.c.stage !== 'Basic' && x.c.evolvesFrom === CARD_MAP[slot.inst.cardId].name)
+            .filter(x => x.c?.category === 'Pokemon' && x.c.stage !== 'Basic' && isEvolutionFrom(x.c, CARD_MAP[slot.inst.cardId]))
             .sort((a,b) => (a.c.stage === 'Stage1' ? 0 : 1) - (b.c.stage === 'Stage1' ? 0 : 1));
           const evo = evolutions[0];
           if (evo) this.evolveCard('opp', evo.hIdx, slot.z, slot.i);
@@ -9639,7 +9718,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             const c = CARD_MAP[o.hand[i]];
             if (c?.category !== 'Trainer' || c.subType !== 'Item') continue;
             if (c.id === 't_potion' && ![o.active, ...o.bench].some(x => x && x.hp < x.maxHp)) continue;
-            if (c.id === 't_rare_candy' && !this.getRareCandyOptions('opp').length) continue;
+            if (isRareCandyCard(c) && !this.getRareCandyOptions('opp').length) continue;
             this.execTrainer('opp', i);
           }
         }
@@ -9902,6 +9981,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           nextOrb.style.background = nm.c1;
           nextOrb.textContent = nm.code;
         }
+        const energyPool = document.getElementById('battle-energy-type-pool');
+        if (energyPool) energyPool.innerHTML = normalizeEnergyTypes(this.p.energyTypes).map(t => renderTypeBadgeSvg(t, 12)).join('');
 
         const fEz = document.getElementById('flag-energy-zone');
         fEz.textContent = this.phase === 'setup' ? '初期配置中' : (this.p.currentEnergy ? `エネ発生: ${TYPE_META[this.p.currentEnergy].code} (未付与)` : 'エネ発生: 付与済');
