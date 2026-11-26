@@ -23,6 +23,15 @@ jobs:
           git apply /tmp/card-data-verification.patch
           base64 --decode tests/card-info-verification-expanded-regression.js.gz.b64 | gzip -dc > tests/card-info-verification-expanded-regression.js
           rm patches/card-data-verification.patch.gz.b64 tests/card-info-verification-expanded-regression.js.gz.b64
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('tests/card-info-verification-regression.js')
+          s = p.read_text()
+          old = 'text:"If this Pokémon is in the Active Spot and is damaged by an attack from your opponent\'s Pokémon."'
+          new = 'text:"If this Pokémon is in the Active Spot and is damaged by an attack from your opponent\'s Pokémon, do 20 damage to the Attacking Pokémon."'
+          assert s.count(old) == 1, 'expected one truncated Rough Skin test fixture'
+          p.write_text(s.replace(old, new, 1))
+          PY
       - name: Run card, battle, deck, and evolution regression checks
         run: |
           set -euo pipefail
