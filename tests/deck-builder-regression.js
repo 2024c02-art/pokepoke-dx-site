@@ -14,12 +14,13 @@ assert.equal(helpers.getDeckCardIdentity('regular'), helpers.getDeckCardIdentity
 assert.equal(helpers.countDeckCardIdentity(['regular', 'alternate'], 'regular'), 2);
 assert.notEqual(helpers.getDeckCardIdentity('regular'), helpers.getDeckCardIdentity('different'));
 const dratini = { id: 'dratini', name: 'ミニリュウ', sourceNameEN: 'Dratini', category: 'Pokemon', stage: 'Basic' };
-const dragonair = { id: 'dragonair', name: 'ハクリュー', sourceNameEN: 'Dragonair', evolvesFrom: 'Dragonair', enDetail: { name: 'Dragonair', evolvesFrom: 'Dratini' }, category: 'Pokemon', stage: 'Stage1' };
+const dragonair = { id: 'dragonair', name: 'ハクリュー', sourceNameEN: 'Dragonair', evolvesFrom: 'Dratini', enDetail: { name: 'Dragonair', evolvesFrom: 'Dratini' }, category: 'Pokemon', stage: 'Stage1' };
 const dragonite = { id: 'dragonite', name: 'カイリュー', sourceNameEN: 'Dragonite', evolvesFrom: 'Dragonair', enDetail: { name: 'Dragonite', evolvesFrom: 'Dragonair' }, category: 'Pokemon', stage: 'Stage2' };
 assert.equal(helpers.isEvolutionFrom(dragonair, dratini), true, 'English parent names must match Japanese Dratini card');
 assert.equal(helpers.isEvolutionFrom(dragonite, dragonair), true, 'English Dragonair parent must match Japanese Dragonair card');
 assert.equal(helpers.isEvolutionFrom(dragonite, dratini), false, 'Rare Candy must not skip a missing Stage 1');
 assert.equal(helpers.isRareCandyCard({ id: 'catalog_A3_144', name: 'ふしぎなアメ' }), true, 'alternate Rare Candy prints must be recognized');
+assert.equal(helpers.isRareCandyCard({ id: 'catalog_A3_144', name: 'Rare Candy' }), true, 'English Rare Candy print names must be recognized');
 assert.deepEqual(helpers.normalizeEnergyTypes(['Water', 'Lightning', 'Water']), ['Water', 'Lightning']);
 assert.deepEqual(helpers.normalizeEnergyTypes([]), ['Fire']);
 const sourceChecks = [
