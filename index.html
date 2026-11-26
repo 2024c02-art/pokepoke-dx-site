@@ -6643,6 +6643,7 @@ const PACK_CATALOG_DATA = {
         if(/^During your opponent's next turn, the Defending (?:Pokémon|Pokemon) can't retreat$/i.test(t)) return {defendingCannotRetreatNextTurn:true};
         if((m=t.match(/^During your opponent's next turn, this (?:Pokémon|Pokemon) takes [−-](\d+) damage from attacks$/i))) return {selfAttackDamageReductionNextTurn:Number(m[1])};
         if(/^During your next turn, this (?:Pokémon|Pokemon) can't attack$/i.test(t)) return {selfCannotAttackNextTurn:true};
+        if(/^Your opponent can't use any Supporter cards from their hand during their next turn$/i.test(t)) return {opponentSupporterLockNextTurn:true};
         if(/^Flip a coin\. If heads, the Defending (?:Pokémon|Pokemon) can't attack during your opponent's next turn$/i.test(t)) return {defendingCannotAttackNextTurnIfHeads:true};
         if((m=t.match(/^This (?:Pokémon|Pokemon) also takes (\d+) damage$/i))) return {selfDamage:Number(m[1])};
         if((m=t.match(/^This (?:Pokémon|Pokemon) also does (\d+) damage to itself$/i))) return {selfDamage:Number(m[1])};
@@ -7796,7 +7797,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           name, deck, hand, discard: [], active, bench,
           points: 0, energyTypes: [...(energyTypes || ['Fire'])],
           currentEnergy: null, nextEnergy: this.pickRandomEnergy(energyTypes),
-          supporterUsed: false, retreated: false, retreatDiscount: 0, dmgBonus: 0
+          supporterUsed: false, supporterBlockedUntilTurn: 0, retreated: false, retreatDiscount: 0, dmgBonus: 0
         };
       },
 
@@ -7855,6 +7856,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           handCount: this.p.hand.length,
           deckCount: this.p.deck.length,
           points: this.p.points,
+          supporterBlockedUntilTurn: Number(this.p.supporterBlockedUntilTurn||0),
           discard: [...this.p.discard],
           active: this.p.active ? JSON.parse(JSON.stringify(this.p.active)) : null,
           bench: JSON.parse(JSON.stringify(this.p.bench))
@@ -7865,6 +7867,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return {
           basedOnRevision: this.remoteBoardRevision,
           points: this.o.points,
+          supporterBlockedUntilTurn: Number(this.o.supporterBlockedUntilTurn||0),
           discard: [...this.o.discard],
           active: this.o.active ? JSON.parse(JSON.stringify(this.o.active)) : null,
           bench: JSON.parse(JSON.stringify(this.o.bench))
@@ -7912,7 +7915,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!Array.isArray(board.discard) || board.discard.length > 20 || board.discard.some(id => typeof id !== 'string' || !CARD_MAP[id])) return null;
         const points = Number(board.points);
         if (!Number.isInteger(points) || points < 0 || points > 3) return null;
-        const clean = { active, bench, discard: [...board.discard], points };
+        const supporterBlockedUntilTurn=Number(board.supporterBlockedUntilTurn||0);
+        if(!Number.isInteger(supporterBlockedUntilTurn)||supporterBlockedUntilTurn<0||supporterBlockedUntilTurn>100000)return null;
+        const clean = { active, bench, discard: [...board.discard], points, supporterBlockedUntilTurn };
         if (includeCounts) {
           const handCount = Number(board.handCount), deckCount = Number(board.deckCount);
           if (!Number.isInteger(handCount) || handCount < 0 || handCount > 10 || !Number.isInteger(deckCount) || deckCount < 0 || deckCount > 20) return null;
@@ -7929,6 +7934,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.o.bench = clean.bench;
         this.o.discard = clean.discard;
         this.o.points = clean.points;
+        this.o.supporterBlockedUntilTurn = clean.supporterBlockedUntilTurn;
         this.o.hand = Array(clean.handCount).fill(null); // only the count is public
         this.o.deck = Array(clean.deckCount).fill(null); // track count without exposing card identities
         return true;
@@ -7944,6 +7950,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.p.bench = clean.bench;
         this.p.discard = clean.discard;
         this.p.points = clean.points;
+        this.p.supporterBlockedUntilTurn = clean.supporterBlockedUntilTurn;
         return true;
       },
 
@@ -8348,7 +8355,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       canUseSupporter(side) {
         const board = side === 'player' ? this.p : this.o;
-        return !!board && !board.supporterUsed && (RULES.SUPPORTER_ALLOWED_ON_FIRST_TURN || !this.isFirstTurnFor(side));
+        return !!board && !board.supporterUsed && Number(board.supporterBlockedUntilTurn||0)<this.turn && (RULES.SUPPORTER_ALLOWED_ON_FIRST_TURN || !this.isFirstTurnFor(side));
       },
 
       isPlayable(id) {
@@ -9221,6 +9228,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(ge.selfCannotAttackNextTurn){
           s.active.attackBlockedUntilTurn=this.turn+2;
           this.log('次の自分の番、このポケモンはワザを使えない！');
+        }
+        if(ge.opponentSupporterLockNextTurn){
+          opp.supporterBlockedUntilTurn=this.turn+1;
+          this.log('相手は次の番、手札からサポートを使えない！');
         }
         if(!opponentActiveProtected&&ge.defendingCannotRetreatNextTurn){
           opp.active.retreatBlockedUntilTurn=this.turn+1;
