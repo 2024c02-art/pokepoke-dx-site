@@ -6943,6 +6943,19 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^Flip a coin\. If tails, this (?:Pokémon|Pokemon) also does (\d+) damage to itself$/i))) return {coinCount:1,selfDamageOnTails:Number(m[1])};
         if((m=t.match(/^Flip (\d+) coins?\. If both of them are heads, this attack does (\d+) more damage$/i))) return {coinCount:Number(m[1]),coinAllHeadsBonus:Number(m[2])};
         if((m=t.match(/^Flip a coin for each (?:Pokémon|Pokemon) you have in play\. This attack does (\d+) damage for each heads$/i))) return {coinPerPokemon:true,coinDamagePerHeads:Number(m[1])};
+        if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon do [−–-](\d+) damage$/i))) return {defendingAttackDamageReductionNextTurn:Number(m[1])};
+        if(/^During your opponent's next turn, the Defending Pokémon can't attack$/i.test(t)) return {defendingCannotAttackNextTurn:true};
+        if(/^If the Defending Pokémon is a Basic Pokémon, it can't attack during your opponent's next turn$/i.test(t)) return {defendingCannotAttackNextTurnIfBasic:true};
+        if(/^During your opponent's next turn, if the Defending Pokémon tries to use an attack, your opponent flips a coin\. If tails, that attack doesn't happen$/i.test(t)) return {defendingAttackFailureOnTailsNextTurn:true};
+        if(/^During your opponent's next turn, they can't play any Item cards from their hand$/i.test(t)) return {opponentItemLockNextTurn:true};
+        if(/^During your opponent's next turn, they can't play any Trainer cards from their hand$/i.test(t)) return {opponentTrainerLockNextTurn:true};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has an Ability, this attack does (\d+) more damage$/i))) return {bonusIfOpponentHasAbility:Number(m[1])};
+        if((m=t.match(/^If you played a Supporter card from your hand during this turn, this attack does (\d+) more damage$/i))) return {bonusIfSupporterPlayedThisTurn:Number(m[1])};
+        if((m=t.match(/^If the Defending Pokémon is a Basic Pokémon, this attack does (\d+) more damage$/i))) return {bonusIfOpponentIsBasic:Number(m[1])};
+        if((m=t.match(/^If 1 of your Pokémon used Sweets Relay during your last turn, this attack does (\d+) more damage$/i))) return {bonusIfSweetsRelayLastTurn:Number(m[1])};
+        if((m=t.match(/^This attack does (\d+) damage for each time your Pokémon used Sweets Relay during this game$/i))) return {bonusPerSweetsRelayUsedThisGame:Number(m[1])};
+        if((m=t.match(/^If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does (\d+) more damage$/i))) return {bonusIfPokemonKnockedOutLastTurn:Number(m[1])};
+        if((m=t.match(/^If any of your \[([GRWLPFDM])\] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does (\d+) more damage$/i))) return {bonusIfPokemonTypeKnockedOutLastTurn:this.energyMap[m[1].toUpperCase()]||null,bonusIfPokemonTypeKnockedOutLastTurnDamage:Number(m[2])};
         const statusMap={poisoned:'Poisoned',burned:'Burned',asleep:'Asleep',paralyzed:'Paralyzed',confused:'Confused'};
         const readStatuses=raw=>{
           const parts=String(raw||'').split(/\s+and\s+/i).map(x=>statusMap[x.trim().toLowerCase()]);
@@ -8096,7 +8109,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       createInst(cardId, turnPlayed = 0) {
         const b = CARD_MAP[cardId];
-        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, under: [] };
+        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, under: [] };
       },
 
       pickRandomEnergy(types) {
@@ -8128,7 +8141,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           name, deck, hand, discard: [], active, bench,
           points: 0, energyTypes: [...selectedEnergyTypes],
           currentEnergy: null, nextEnergy: this.pickRandomEnergy(selectedEnergyTypes),
-          supporterUsed: false, supporterBlockedUntilTurn: 0, retreated: false, retreatDiscount: 0, dmgBonus: 0
+          supporterUsed: false, supporterBlockedUntilTurn: 0, itemBlockedUntilTurn: 0, trainerBlockedUntilTurn: 0,
+          lastKOByOpponentAttack: {turn:-1,types:[]}, sweetsRelayUsedTurn: -1, sweetsRelayUses: 0,
+          retreated: false, retreatDiscount: 0, dmgBonus: 0
         };
       },
 
@@ -8190,6 +8205,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           deckCount: this.p.deck.length,
           points: this.p.points,
           supporterBlockedUntilTurn: Number(this.p.supporterBlockedUntilTurn||0),
+          itemBlockedUntilTurn: Number(this.p.itemBlockedUntilTurn||0),
+          trainerBlockedUntilTurn: Number(this.p.trainerBlockedUntilTurn||0),
+          lastKOByOpponentAttack: this.p.lastKOByOpponentAttack,
+          sweetsRelayUsedTurn: Number(this.p.sweetsRelayUsedTurn??-1),
+          sweetsRelayUses: Number(this.p.sweetsRelayUses||0),
           discard: [...this.p.discard],
           active: this.p.active ? JSON.parse(JSON.stringify(this.p.active)) : null,
           bench: JSON.parse(JSON.stringify(this.p.bench))
@@ -8201,6 +8221,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           basedOnRevision: this.remoteBoardRevision,
           points: this.o.points,
           supporterBlockedUntilTurn: Number(this.o.supporterBlockedUntilTurn||0),
+          itemBlockedUntilTurn: Number(this.o.itemBlockedUntilTurn||0),
+          trainerBlockedUntilTurn: Number(this.o.trainerBlockedUntilTurn||0),
+          lastKOByOpponentAttack: this.o.lastKOByOpponentAttack,
+          sweetsRelayUsedTurn: Number(this.o.sweetsRelayUsedTurn??-1),
+          sweetsRelayUses: Number(this.o.sweetsRelayUses||0),
           discard: [...this.o.discard],
           active: this.o.active ? JSON.parse(JSON.stringify(this.o.active)) : null,
           bench: JSON.parse(JSON.stringify(this.o.bench))
@@ -8226,15 +8251,17 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const statusEffects=[...new Set(rawStatusEffects)];
         const statusUntilTurn=Number(inst.statusUntilTurn||0);
         if(!Number.isInteger(statusUntilTurn)||statusUntilTurn<0||statusUntilTurn>100000) return null;
-        const effectTurnFields=['preventAttackDamageUntilTurn','attackDamageReductionUntilTurn','retreatBlockedUntilTurn','attackBlockedUntilTurn'];
+        const effectTurnFields=['preventAttackDamageUntilTurn','attackDamageReductionUntilTurn','attackDamagePenaltyUntilTurn','attackFailureOnTailsUntilTurn','retreatBlockedUntilTurn','attackBlockedUntilTurn'];
         const effectTurns={};
         for(const key of effectTurnFields){const value=Number(inst[key]||0);if(!Number.isInteger(value)||value<0||value>100000)return null;effectTurns[key]=value;}
         const attackDamageReduction=Number(inst.attackDamageReduction||0);
         if(!Number.isInteger(attackDamageReduction)||attackDamageReduction<0||attackDamageReduction>200)return null;
+        const attackDamagePenalty=Number(inst.attackDamagePenalty||0);
+        if(!Number.isInteger(attackDamagePenalty)||attackDamagePenalty<0||attackDamagePenalty>200)return null;
         return {
           cardId: inst.cardId, hp: Math.floor(hp), maxHp: Math.floor(maxHp),
           energies: [...inst.energies], turnPlayed,
-          abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, ...effectTurns, attackDamageReduction, under: [...under]
+          abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, ...effectTurns, attackDamageReduction, attackDamagePenalty, under: [...under]
         };
       },
 
@@ -8249,8 +8276,21 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const points = Number(board.points);
         if (!Number.isInteger(points) || points < 0 || points > 3) return null;
         const supporterBlockedUntilTurn=Number(board.supporterBlockedUntilTurn||0);
-        if(!Number.isInteger(supporterBlockedUntilTurn)||supporterBlockedUntilTurn<0||supporterBlockedUntilTurn>100000)return null;
-        const clean = { active, bench, discard: [...board.discard], points, supporterBlockedUntilTurn };
+        const itemBlockedUntilTurn=Number(board.itemBlockedUntilTurn||0);
+        const trainerBlockedUntilTurn=Number(board.trainerBlockedUntilTurn||0);
+        if(!Number.isInteger(supporterBlockedUntilTurn)||supporterBlockedUntilTurn<0||supporterBlockedUntilTurn>100000||
+           !Number.isInteger(itemBlockedUntilTurn)||itemBlockedUntilTurn<0||itemBlockedUntilTurn>100000||
+           !Number.isInteger(trainerBlockedUntilTurn)||trainerBlockedUntilTurn<0||trainerBlockedUntilTurn>100000)return null;
+        const sweetsRelayUsedTurn=Number(board.sweetsRelayUsedTurn??-1);
+        const sweetsRelayUses=Number(board.sweetsRelayUses||0);
+        if(!Number.isInteger(sweetsRelayUsedTurn)||sweetsRelayUsedTurn< -1||sweetsRelayUsedTurn>100000||
+           !Number.isInteger(sweetsRelayUses)||sweetsRelayUses<0||sweetsRelayUses>1000)return null;
+        const rawKO=board.lastKOByOpponentAttack&&typeof board.lastKOByOpponentAttack==='object'?board.lastKOByOpponentAttack:{};
+        const koTurn=Number(rawKO.turn??-1);
+        const koTypes=Array.isArray(rawKO.types)?rawKO.types:[];
+        if(!Number.isInteger(koTurn)||koTurn< -1||koTurn>100000||koTypes.length>4||koTypes.some(type=>!ENERGY_TYPES.includes(type)))return null;
+        const clean = { active, bench, discard: [...board.discard], points, supporterBlockedUntilTurn, itemBlockedUntilTurn, trainerBlockedUntilTurn,
+          lastKOByOpponentAttack:{turn:koTurn,types:[...new Set(koTypes)]}, sweetsRelayUsedTurn, sweetsRelayUses };
         if (includeCounts) {
           const handCount = Number(board.handCount), deckCount = Number(board.deckCount);
           if (!Number.isInteger(handCount) || handCount < 0 || handCount > 10 || !Number.isInteger(deckCount) || deckCount < 0 || deckCount > 20) return null;
@@ -8268,6 +8308,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.o.discard = clean.discard;
         this.o.points = clean.points;
         this.o.supporterBlockedUntilTurn = clean.supporterBlockedUntilTurn;
+        this.o.itemBlockedUntilTurn = clean.itemBlockedUntilTurn;
+        this.o.trainerBlockedUntilTurn = clean.trainerBlockedUntilTurn;
+        this.o.lastKOByOpponentAttack = clean.lastKOByOpponentAttack;
+        this.o.sweetsRelayUsedTurn = clean.sweetsRelayUsedTurn;
+        this.o.sweetsRelayUses = clean.sweetsRelayUses;
         this.o.hand = Array(clean.handCount).fill(null); // only the count is public
         this.o.deck = Array(clean.deckCount).fill(null); // track count without exposing card identities
         return true;
@@ -8284,6 +8329,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.p.discard = clean.discard;
         this.p.points = clean.points;
         this.p.supporterBlockedUntilTurn = clean.supporterBlockedUntilTurn;
+        this.p.itemBlockedUntilTurn = clean.itemBlockedUntilTurn;
+        this.p.trainerBlockedUntilTurn = clean.trainerBlockedUntilTurn;
+        this.p.lastKOByOpponentAttack = clean.lastKOByOpponentAttack;
+        this.p.sweetsRelayUsedTurn = clean.sweetsRelayUsedTurn;
+        this.p.sweetsRelayUses = clean.sweetsRelayUses;
         return true;
       },
 
@@ -8700,7 +8750,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if (c.stage === 'Basic') return this.p.bench.length < 3;
           return this.canEvolveNow('player') && [this.p.active, ...this.p.bench].filter(Boolean).some(p => isEvolutionFrom(c, CARD_MAP[p.cardId]) && p.turnPlayed < this.turn);
         }
-        if (c.category === 'Trainer') return c.subType === 'Supporter' ? this.canUseSupporter('player') : true;
+        if (c.category === 'Trainer') {
+          if(Number(this.p.trainerBlockedUntilTurn||0)>=this.turn) return false;
+          if(c.subType==='Item'&&Number(this.p.itemBlockedUntilTurn||0)>=this.turn) return false;
+          return c.subType === 'Supporter' ? this.canUseSupporter('player') : true;
+        }
         return false;
       },
 
@@ -8867,6 +8921,14 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
         const id = s.hand[hIdx], c = CARD_MAP[id];
         if (!c) return;
+        if(c.category==='Trainer' && Number(s.trainerBlockedUntilTurn||0)>=this.turn){
+          if(side==='player')ui.toast('ワザの効果で、次の番までトレーナーズを使えません');
+          return;
+        }
+        if(c.category==='Trainer' && c.subType==='Item' && Number(s.itemBlockedUntilTurn||0)>=this.turn){
+          if(side==='player')ui.toast('ワザの効果で、次の番までアイテムを使えません');
+          return;
+        }
         if (c.subType === 'Supporter' && !this.canUseSupporter(side)) {
           if (side === 'player') ui.toast('このターンはサポートを使えません');
           return;
@@ -9170,6 +9232,17 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(atk.genericEffect?.bonusPerBenchPokemon) { const type=this.energyEffectType(atk.genericEffect.benchPokemonType); const benchCount=s.bench.filter(b=>!type||CARD_MAP[b.cardId]?.type===type).length; dmg += Number(atk.genericEffect.bonusPerBenchPokemon||0)*benchCount; }
         if(atk.genericEffect?.bonusPerDamageCounter) dmg += Number(atk.genericEffect.bonusPerDamageCounter||0)*Math.floor(Math.max(0,attInst.maxHp-attInst.hp)/10);
         if(atk.genericEffect?.bonusIfOpponentEx && defC.isEx) dmg += Number(atk.genericEffect.bonusIfOpponentEx||0);
+        if(atk.genericEffect?.bonusIfOpponentHasAbility && defC.ability) dmg += Number(atk.genericEffect.bonusIfOpponentHasAbility||0);
+        if(atk.genericEffect?.bonusIfSupporterPlayedThisTurn && s.supporterUsed) dmg += Number(atk.genericEffect.bonusIfSupporterPlayedThisTurn||0);
+        if(atk.genericEffect?.bonusIfOpponentIsBasic && defC.stage==='Basic') dmg += Number(atk.genericEffect.bonusIfOpponentIsBasic||0);
+        if(atk.genericEffect?.bonusIfSweetsRelayLastTurn && Number(s.sweetsRelayUsedTurn)===this.turn-2) dmg += Number(atk.genericEffect.bonusIfSweetsRelayLastTurn||0);
+        if(atk.genericEffect?.bonusPerSweetsRelayUsedThisGame) dmg += Number(atk.genericEffect.bonusPerSweetsRelayUsedThisGame||0)*Number(s.sweetsRelayUses||0);
+        const koRecord=s.lastKOByOpponentAttack;
+        if(koRecord && Number(koRecord.turn)===this.turn-1){
+          if(atk.genericEffect?.bonusIfPokemonKnockedOutLastTurn) dmg += Number(atk.genericEffect.bonusIfPokemonKnockedOutLastTurn||0);
+          if(atk.genericEffect?.bonusIfPokemonTypeKnockedOutLastTurn && Array.isArray(koRecord.types) && koRecord.types.includes(atk.genericEffect.bonusIfPokemonTypeKnockedOutLastTurn)) dmg += Number(atk.genericEffect.bonusIfPokemonTypeKnockedOutLastTurnDamage||0);
+        }
+        if(attInst && Number(attInst.attackDamagePenaltyUntilTurn||0)>=this.turn) dmg -= Math.max(0,Number(attInst.attackDamagePenalty||0));
         if(atk.genericEffect?.bonusPerOpponentBenchPokemon) dmg += Number(atk.genericEffect.bonusPerOpponentBenchPokemon||0)*opp.bench.length;
         if(atk.genericEffect?.bonusIfSelfDamaged && attInst.hp < attInst.maxHp) dmg += Number(atk.genericEffect.bonusIfSelfDamaged||0);
         if(atk.genericEffect?.bonusIfOpponentDamaged && defInst.hp < defInst.maxHp) dmg += Number(atk.genericEffect.bonusIfOpponentDamaged||0);
@@ -9390,6 +9463,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if(side==='player')ui.toast('ワザの効果で、このポケモンは今の番ワザを使えません');
           return;
         }
+        if(Number(s.active.attackFailureOnTailsUntilTurn||0)>=this.turn){
+          s.active.attackFailureOnTailsUntilTurn=0;
+          const heads=Math.random()<0.5;
+          this.log(`ワザの妨害効果：コイントスは${heads?'オモテ。ワザを使える！':'ウラ。ワザは失敗！'}`);
+          if(!heads){
+            if(side==='player') this.endTurn();
+            else { this.turn++; this.startTurn('player'); }
+            return;
+          }
+        }
         const attC = CARD_MAP[s.active.cardId];
         const attackingInst = s.active;
         const declaredAtk = attC.attacks[atkIdx];
@@ -9520,6 +9603,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           atk={...atk,damage:rolledDamage};
           this.log(`コイントス！オモテ${coinHeads}回／${coinRolls}回。`);
         }
+        if(!isGenomeHack && String(atk.name||'').toLowerCase()==='sweets relay'){
+          s.sweetsRelayUses=Number(s.sweetsRelayUses||0)+1;
+          s.sweetsRelayUsedTurn=this.turn;
+        }
         const prev = this.calcDamagePreview(s.active, atk, opp.active, side);
         const dmg = prev.final;
         this.resolvingAttackSide = side;
@@ -9611,9 +9698,30 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           opp.active.retreatBlockedUntilTurn=this.turn+1;
           this.log('相手のバトルポケモンは次の相手の番、にげられない！');
         }
-        if(!opponentActiveProtected&&ge.defendingCannotAttackNextTurnIfHeads&&coinHeads>0){
+        if(!opponentActiveProtected&&ge.defendingCannotAttackNextTurn){
           opp.active.attackBlockedUntilTurn=this.turn+1;
           this.log('相手のバトルポケモンは次の相手の番、ワザを使えない！');
+        }
+        if(!opponentActiveProtected&&ge.defendingCannotAttackNextTurnIfBasic&&CARD_MAP[opp.active.cardId]?.stage==='Basic'){
+          opp.active.attackBlockedUntilTurn=this.turn+1;
+          this.log('相手のたねポケモンは次の相手の番、ワザを使えない！');
+        }
+        if(!opponentActiveProtected&&ge.defendingAttackFailureOnTailsNextTurn){
+          opp.active.attackFailureOnTailsUntilTurn=this.turn+1;
+          this.log('相手のバトルポケモンは次の番、ワザを使うときにコイントス！');
+        }
+        if(!opponentActiveProtected&&Number(ge.defendingAttackDamageReductionNextTurn||0)>0){
+          opp.active.attackDamagePenalty=Number(ge.defendingAttackDamageReductionNextTurn);
+          opp.active.attackDamagePenaltyUntilTurn=this.turn+1;
+          this.log(`相手のバトルポケモンは次の番、ワザのダメージが-${opp.active.attackDamagePenalty}！`);
+        }
+        if(ge.opponentItemLockNextTurn){
+          opp.itemBlockedUntilTurn=this.turn+1;
+          this.log('相手は次の番、手札からアイテムを使えない！');
+        }
+        if(ge.opponentTrainerLockNextTurn){
+          opp.trainerBlockedUntilTurn=this.turn+1;
+          this.log('相手は次の番、手札からトレーナーズを使えない！');
         }
 
         if (atk.fx === 'bench_all20' && opp.bench.length) {
@@ -9722,6 +9830,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!inst || inst.hp > 0) return false;
 
         const c = CARD_MAP[inst.cardId];
+        if(this.resolvingAttackSide && this.resolvingAttackSide!==defSide){
+          const previous=def.lastKOByOpponentAttack;
+          const record=previous&&Number(previous.turn)===this.turn?previous:{turn:this.turn,types:[]};
+          record.types=[...new Set([...(Array.isArray(record.types)?record.types:[]),c.type].filter(Boolean))];
+          def.lastKOByOpponentAttack=record;
+        }
         const pts = c.pointValue || (c.isEx ? 2 : 1);
         def.discard.push(...(inst.under || []), inst.cardId);
         att.points = Math.min(3, att.points + pts);
@@ -10016,7 +10130,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const conditionSummary=[...(inst.statusEffects||[]),...(inst.status?[inst.status]:[])].map(x=>conditionLabels[x]).filter(Boolean).join('・');
         const temporaryEffects=[];
         if(this.isAttackProtected(inst))temporaryEffects.push('ワザのダメージ・効果を防御中');
-        if(Number(inst.attackDamageReductionUntilTurn||0)>=this.turn&&Number(inst.attackDamageReduction||0)>0)temporaryEffects.push(`ワザのダメージ-${Number(inst.attackDamageReduction)}`);
+        if(Number(inst.attackDamageReductionUntilTurn||0)>=this.turn&&Number(inst.attackDamageReduction||0)>0)temporaryEffects.push(`受けるワザのダメージ-${Number(inst.attackDamageReduction)}`);
+        if(Number(inst.attackDamagePenaltyUntilTurn||0)>=this.turn&&Number(inst.attackDamagePenalty||0)>0)temporaryEffects.push(`使うワザのダメージ-${Number(inst.attackDamagePenalty)}`);
+        if(Number(inst.attackFailureOnTailsUntilTurn||0)>=this.turn)temporaryEffects.push('ワザを使うときコイントス');
         if(Number(inst.retreatBlockedUntilTurn||0)>=this.turn)temporaryEffects.push('にげられない');
         if(Number(inst.attackBlockedUntilTurn||0)>=this.turn)temporaryEffects.push('ワザを使えない');
         const temporaryEffectSummary=temporaryEffects.join('・');

@@ -1,0 +1,70 @@
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const html=fs.readFileSync('index.html','utf8');
+
+const p=html.indexOf('parseGenericEffect(text) {');
+const pe=html.indexOf('\n      },',p);
+assert.ok(p>=0&&pe>p,'generic effect parser exists');
+const parseMethod=html.slice(p,pe+8);
+const parse=new Function(`return ({${parseMethod}}).parseGenericEffect;`)();
+const ctx={energyMap:{G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal'}};
+const cases=[
+  [\"During your opponent's next turn, attacks used by the Defending Pokémon do −20 damage.\",'defendingAttackDamageReductionNextTurn',20],
+  [\"During your opponent's next turn, the Defending Pokémon can't attack.\",'defendingCannotAttackNextTurn',true],
+  [\"If the Defending Pokémon is a Basic Pokémon, it can't attack during your opponent's next turn.\",'defendingCannotAttackNextTurnIfBasic',true],
+  [\"During your opponent's next turn, if the Defending Pokémon tries to use an attack, your opponent flips a coin. If tails, that attack doesn't happen.\",'defendingAttackFailureOnTailsNextTurn',true],
+  [\"During your opponent's next turn, they can't play any Item cards from their hand.\",'opponentItemLockNextTurn',true],
+  [\"During your opponent's next turn, they can't play any Trainer cards from their hand.\",'opponentTrainerLockNextTurn',true],
+  [\"If your opponent's Active Pokémon has an Ability, this attack does 40 more damage.\",'bonusIfOpponentHasAbility',40],
+  [\"If you played a Supporter card from your hand during this turn, this attack does 50 more damage.\",'bonusIfSupporterPlayedThisTurn',50],
+  [\"If the Defending Pokémon is a Basic Pokémon, this attack does 30 more damage.\",'bonusIfOpponentIsBasic',30],
+  [\"If 1 of your Pokémon used Sweets Relay during your last turn, this attack does 20 more damage.\",'bonusIfSweetsRelayLastTurn',20],
+  [\"This attack does 40 damage for each time your Pokémon used Sweets Relay during this game.\",'bonusPerSweetsRelayUsedThisGame',40],
+  [\"If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 60 more damage.\",'bonusIfPokemonKnockedOutLastTurn',60],
+  [\"If any of your [D] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 80 more damage.\",'bonusIfPokemonTypeKnockedOutLastTurn','Darkness']
+];
+for(const [text,key,expected] of cases){const parsed=parse.call(ctx,text);assert.ok(parsed,'unparsed effect: '+text);assert.equal(parsed[key],expected,'wrong parsed value: '+text);}
+
+const calcStart=html.indexOf('calcDamagePreview(attInst, atk, defInst, side) {');
+const calcEnd=html.indexOf('\n      resolveMoltresAbility',calcStart);
+assert.ok(calcStart>=0&&calcEnd>calcStart,'damage calculator exists');
+const calcSource=html.slice(calcStart,calcEnd);
+const calc=new Function('CARD_MAP',`return ({${calcSource}}).calcDamagePreview;`)({
+  attacker:{type:'Fire',weakness:'None'},
+  targetAbility:{type:'Water',weakness:'None',stage:'Stage1',ability:{name:'Test Ability'}},
+  targetBasic:{type:'Water',weakness:'None',stage:'Basic',ability:null}
+});
+const engine={
+  p:{points:0,supporterUsed:false,dmgBonus:0,bench:[],lastKOByOpponentAttack:{turn:-1,types:[]},sweetsRelayUsedTurn:-1,sweetsRelayUses:0},
+  o:{points:0,active:{energies:[]},bench:[]},
+  turn:3,
+  energyEffectType:code=>ctx.energyMap[String(code||'').toUpperCase()]||null,
+  isAttackProtected:()=>false,
+  attackDamageAfterDefenses:(_inst,amount)=>Math.max(0,amount)
+};
+const attacker={cardId:'attacker',hp:100,maxHp:100,energies:[],attackDamagePenalty:0,attackDamagePenaltyUntilTurn:0};
+const baseAttack={name:'Base',damage:50,cost:[],genericEffect:null};
+let def={cardId:'targetAbility',hp:100,maxHp:100,energies:[]};
+engine.calcDamagePreview=calc;
+engine.p.supporterUsed=false;
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfOpponentHasAbility:40}},def,'player').final,90,'ability bonus');
+engine.p.supporterUsed=true;
+assert.equal(calc.call(engine,{...attacker},{...baseAttack,genericEffect:{bonusIfSupporterPlayedThisTurn:50}},def,'player').final,100,'supporter bonus');
+engine.p.supporterUsed=false;
+def={cardId:'targetBasic',hp:100,maxHp:100,energies:[]};
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfOpponentIsBasic:30}},def,'player').final,80,'Basic target bonus');
+engine.p.sweetsRelayUsedTurn=1;
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfSweetsRelayLastTurn:20}},def,'player').final,70,'Sweets Relay last-turn bonus');
+engine.p.sweetsRelayUses=3;
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusPerSweetsRelayUsedThisGame:40}},def,'player').final,170,'Sweets Relay cumulative bonus');
+engine.p.lastKOByOpponentAttack={turn:2,types:['Darkness']};
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfPokemonKnockedOutLastTurn:60}},def,'player').final,110,'KO last-turn bonus');
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfPokemonTypeKnockedOutLastTurn:'Darkness',bonusIfPokemonTypeKnockedOutLastTurnDamage:80}},def,'player').final,130,'typed KO last-turn bonus');
+attacker.attackDamagePenalty=20;attacker.attackDamagePenaltyUntilTurn=3;
+assert.equal(calc.call(engine,attacker,baseAttack,def,'player').final,30,'temporary outgoing attack damage reduction');
+assert.match(html,/opponentItemLockNextTurn/);
+assert.match(html,/opponentTrainerLockNextTurn/);
+assert.match(html,/attackFailureOnTailsUntilTurn/);
+assert.match(html,/lastKOByOpponentAttack/);
+assert.match(html,/sweetsRelayUsedTurn/);
+console.log('All expanded battle-effect regression checks passed.');
