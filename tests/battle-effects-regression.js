@@ -15,6 +15,18 @@ const checks = [
   ['conditional status bonus damage is applied', /bonusIfOpponentStatusDamage/],
   ['single-target effect can filter damaged targets', /opponentPokemonDamageRequiresDamage/],
   ['attack choice resolver is present', /resolveAttackChoice\s*\(/],
+  ['coin-gated attack protection is parsed', /preventAttackDamageNextTurnIfHeads/],
+  ['next-turn retreat lock is parsed', /defendingCannotRetreatNextTurn/],
+  ['temporary damage reduction is parsed', /selfAttackDamageReductionNextTurn/],
+  ['next-turn attack lock is parsed', /selfCannotAttackNextTurn/],
+  ['coin-gated attack lock is parsed', /defendingCannotAttackNextTurnIfHeads/],
+  ['temporary effects are initialized on Pokemon', /preventAttackDamageUntilTurn/],
+  ['temporary effects survive online board normalization', /attackDamageReductionUntilTurn/],
+  ['attack damage defense helper is present', /attackDamageAfterDefenses/],
+  ['attack protection is applied to the defending active Pokemon', /opponentActiveProtected/],
+  ['retreat lock is enforced', /retreatBlockedUntilTurn/],
+  ['attack lock is enforced', /attackBlockedUntilTurn/],
+  ['temporary effects are visible in card details', /temporaryEffectSummary/],
 ];
 let failed = 0;
 for (const [label, pattern] of checks) {
