@@ -1,0 +1,43 @@
+name: Apply card reference verification fixes
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-card-data-fix.yml"
+      - "patches/card-data-verification.patch.gz.b64"
+      - "tests/card-info-verification-expanded-regression.js.gz.b64"
+permissions:
+  contents: write
+jobs:
+  patch-test-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Apply card verification changes
+        run: |
+          set -euo pipefail
+          gzip -dc patches/card-data-verification.patch.gz.b64 > /tmp/card-data-verification.patch
+          git apply --check /tmp/card-data-verification.patch
+          git apply /tmp/card-data-verification.patch
+          gzip -dc tests/card-info-verification-expanded-regression.js.gz.b64 > tests/card-info-verification-expanded-regression.js
+          rm patches/card-data-verification.patch.gz.b64 tests/card-info-verification-expanded-regression.js.gz.b64
+      - name: Run card, battle, deck, and evolution regression checks
+        run: |
+          set -euo pipefail
+          node tests/card-info-verification-regression.js
+          node tests/card-info-verification-expanded-regression.js
+          node tests/battle-effects-regression.js
+          node tests/deck-builder-regression.js
+          node tests/dragonite-regression.js
+          node tests/rare-candy-regression.js
+      - name: Commit verified changes to main
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/export-index.yml .github/workflows/apply-card-data-fix.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: verify card data and effects against gameplay references"
+          git push origin HEAD:main
