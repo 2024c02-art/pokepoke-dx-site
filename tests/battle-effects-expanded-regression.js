@@ -9,19 +9,19 @@ const parseMethod=html.slice(p,pe+8);
 const parse=new Function(`return ({${parseMethod}}).parseGenericEffect;`)();
 const ctx={energyMap:{G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal'}};
 const cases=[
-  [\"During your opponent's next turn, attacks used by the Defending Pokémon do −20 damage.\",'defendingAttackDamageReductionNextTurn',20],
-  [\"During your opponent's next turn, the Defending Pokémon can't attack.\",'defendingCannotAttackNextTurn',true],
-  [\"If the Defending Pokémon is a Basic Pokémon, it can't attack during your opponent's next turn.\",'defendingCannotAttackNextTurnIfBasic',true],
-  [\"During your opponent's next turn, if the Defending Pokémon tries to use an attack, your opponent flips a coin. If tails, that attack doesn't happen.\",'defendingAttackFailureOnTailsNextTurn',true],
-  [\"During your opponent's next turn, they can't play any Item cards from their hand.\",'opponentItemLockNextTurn',true],
-  [\"During your opponent's next turn, they can't play any Trainer cards from their hand.\",'opponentTrainerLockNextTurn',true],
-  [\"If your opponent's Active Pokémon has an Ability, this attack does 40 more damage.\",'bonusIfOpponentHasAbility',40],
-  [\"If you played a Supporter card from your hand during this turn, this attack does 50 more damage.\",'bonusIfSupporterPlayedThisTurn',50],
-  [\"If the Defending Pokémon is a Basic Pokémon, this attack does 30 more damage.\",'bonusIfOpponentIsBasic',30],
-  [\"If 1 of your Pokémon used Sweets Relay during your last turn, this attack does 20 more damage.\",'bonusIfSweetsRelayLastTurn',20],
-  [\"This attack does 40 damage for each time your Pokémon used Sweets Relay during this game.\",'bonusPerSweetsRelayUsedThisGame',40],
-  [\"If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 60 more damage.\",'bonusIfPokemonKnockedOutLastTurn',60],
-  [\"If any of your [D] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 80 more damage.\",'bonusIfPokemonTypeKnockedOutLastTurn','Darkness']
+  ["During your opponent's next turn, attacks used by the Defending Pokémon do −20 damage.",'defendingAttackDamageReductionNextTurn',20],
+  ["During your opponent's next turn, the Defending Pokémon can't attack.",'defendingCannotAttackNextTurn',true],
+  ["If the Defending Pokémon is a Basic Pokémon, it can't attack during your opponent's next turn.",'defendingCannotAttackNextTurnIfBasic',true],
+  ["During your opponent's next turn, if the Defending Pokémon tries to use an attack, your opponent flips a coin. If tails, that attack doesn't happen.",'defendingAttackFailureOnTailsNextTurn',true],
+  ["During your opponent's next turn, they can't play any Item cards from their hand.",'opponentItemLockNextTurn',true],
+  ["During your opponent's next turn, they can't play any Trainer cards from their hand.",'opponentTrainerLockNextTurn',true],
+  ["If your opponent's Active Pokémon has an Ability, this attack does 40 more damage.",'bonusIfOpponentHasAbility',40],
+  ["If you played a Supporter card from your hand during this turn, this attack does 50 more damage.",'bonusIfSupporterPlayedThisTurn',50],
+  ["If the Defending Pokémon is a Basic Pokémon, this attack does 30 more damage.",'bonusIfOpponentIsBasic',30],
+  ["If 1 of your Pokémon used Sweets Relay during your last turn, this attack does 20 more damage.",'bonusIfSweetsRelayLastTurn',20],
+  ["This attack does 40 damage for each time your Pokémon used Sweets Relay during this game.",'bonusPerSweetsRelayUsedThisGame',40],
+  ["If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 60 more damage.",'bonusIfPokemonKnockedOutLastTurn',60],
+  ["If any of your [D] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 80 more damage.",'bonusIfPokemonTypeKnockedOutLastTurn','Darkness']
 ];
 for(const [text,key,expected] of cases){const parsed=parse.call(ctx,text);assert.ok(parsed,'unparsed effect: '+text);assert.equal(parsed[key],expected,'wrong parsed value: '+text);}
 
