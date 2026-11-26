@@ -1558,6 +1558,13 @@
       ].map(normalizeEvolutionToken).filter(Boolean);
       return parentNames.some(name => previousNames.has(name));
     }
+    function isKnownRareCandyLine(evolutionCardOrId, basicCardOrId) {
+      const evolutionNames = new Set(getCardEvolutionNameAliases(evolutionCardOrId));
+      const basicNames = new Set(getCardEvolutionNameAliases(basicCardOrId));
+      const isDragonite = ['カイリュー', 'dragonite'].some(name => evolutionNames.has(normalizeEvolutionToken(name)));
+      const isDratini = ['ミニリュウ', 'dratini'].some(name => basicNames.has(normalizeEvolutionToken(name)));
+      return isDragonite && isDratini;
+    }
     function isRareCandyCard(cardOrId) {
       const card = typeof cardOrId === 'string' ? CARD_MAP[cardOrId] : cardOrId;
       if (!card) return false;
@@ -8587,8 +8594,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!baseC || t.turnPlayed >= this.turn) return false;
         const directLine = isEvolutionFrom(evoC, baseC);
         const rareCandyLine = allowRareCandy && baseC.stage === 'Basic' && evoC.stage === 'Stage2' &&
-          CARDS.some(c => c.category === 'Pokemon' && c.stage === 'Stage1' &&
-            isEvolutionFrom(c, baseC) && isEvolutionFrom(evoC, c));
+          (isKnownRareCandyLine(evoC, baseC) || CARDS.some(c => c.category === 'Pokemon' && c.stage === 'Stage1' &&
+            isEvolutionFrom(c, baseC) && isEvolutionFrom(evoC, c)));
         if (!directLine && !rareCandyLine) return false;
         board.hand.splice(hIdx, 1);
         const dmg = t.maxHp - t.hp;
@@ -8615,8 +8622,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           const evo = CARD_MAP[evoId];
           for (const base of field) {
             const baseCard = CARD_MAP[base.inst.cardId];
-            const hasMatchingStage1 = CARDS.some(c => c.category === 'Pokemon' && c.stage === 'Stage1' &&
-              isEvolutionFrom(c, baseCard) && isEvolutionFrom(evo, c));
+            const hasMatchingStage1 = isKnownRareCandyLine(evo, baseCard) ||
+              CARDS.some(c => c.category === 'Pokemon' && c.stage === 'Stage1' &&
+                isEvolutionFrom(c, baseCard) && isEvolutionFrom(evo, c));
             if (!hasMatchingStage1) continue;
             const key = `${evoId}|${base.z}|${base.i}`;
             if (!unique.has(key)) unique.set(key, { evoCardId: evoId, z: base.z, i: base.i, baseId: base.inst.cardId });
@@ -8691,7 +8699,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
 
-      execTrainer(side, hIdx) {
+      async execTrainer(side, hIdx) {
         if (this.over || this.actionLocked) return;
         const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
         const id = s.hand[hIdx], c = CARD_MAP[id];
@@ -8701,8 +8709,48 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           return;
         }
 
+        // A1 cards first show their Japanese names and stages; evolvesFrom is supplied by
+        // the lazy gameplay shard. Load the actual card sets before checking Rare Candy.
+        // Otherwise Dratini/Dragonite can be incorrectly rejected while the A1 shard is pending.
         // Rare Candy stays in hand until the player confirms a legal target.
         if (isRareCandyCard(c)) {
+          if (side === 'player' && typeof CARD_DATA_SUPPLEMENT !== 'undefined') {
+            const cardsOnField = [s.active, ...s.bench].filter(Boolean)
+              .map(inst => CARD_MAP[inst.cardId]).filter(Boolean);
+            const stage2InHand = s.hand.map(cardId => CARD_MAP[cardId])
+              .filter(card => card?.category === 'Pokemon' && card.stage === 'Stage2');
+            const setCodes = [...new Set([...cardsOnField, ...stage2InHand]
+              .map(card => String(card.setCode || card.sourceSet || '').toLowerCase())
+              .filter(code => code && CARD_DATA_SUPPLEMENT.sourceCodes.includes(code) &&
+                !CARD_DATA_SUPPLEMENT.gameplayLoaded.has(code)))];
+            if (setCodes.length) {
+              const sessionId = this.sessionId;
+              const turnAtStart = this.turn;
+              this.actionLocked = true;
+              this.render();
+              try {
+                await Promise.all(setCodes.map(code => CARD_DATA_SUPPLEMENT.loadSet(code, false)));
+              } catch (error) {
+                if (sessionId === this.sessionId) {
+                  this.actionLocked = false;
+                  if (!this.over) {
+                    this.render();
+                    ui.toast('進化カードの詳細データを取得できませんでした。通信を確認して再度お試しください');
+                  }
+                }
+                return false;
+              }
+              if (sessionId !== this.sessionId || this.over || this.turn !== turnAtStart || this.currentSide !== 'player') {
+                this.actionLocked = false;
+                if (sessionId === this.sessionId && !this.over) this.render();
+                return false;
+              }
+              this.actionLocked = false;
+              const refreshedIndex = s.hand.indexOf(id);
+              if (refreshedIndex < 0) { this.render(); return false; }
+              hIdx = refreshedIndex;
+            }
+          }
           const opts = this.getRareCandyOptions(side);
           if (!opts.length) {
             if (side === 'player') ui.toast('ふしぎなアメを使える進化先がありません');
