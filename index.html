@@ -6669,6 +6669,7 @@ const PACK_CATALOG_DATA = {
       parseGenericEffect(text) {
         const t=String(text||'').trim().replace(/[.!。]$/,''); if(!t) return null;
         let m;
+        if((m=t.match(/^1 of your opponent's (?:Pokémon|Pokemon) is chosen at random (\d+) times?\. For each time a (?:Pokémon|Pokemon) was chosen, do (\d+) damage to it$/i))) return {randomOpponentPokemonDamage:Number(m[2]),randomOpponentPokemonDamageCount:Number(m[1])};
         if((m=t.match(/^This attack (?:also )?does (\d+) damage to 1 of your opponent's (?:Pokémon|Pokemon)(?: that (?:has damage on it|have damage on them))?$/i))) return {opponentPokemonDamage:Number(m[1]),opponentPokemonDamageRequiresDamage:/that (?:has damage on it|have damage on them)/i.test(t)};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is (Poisoned|Burned), this attack does (\d+) more damage$/i))) return {bonusIfOpponentStatus:m[1].toLowerCase(),bonusIfOpponentStatusDamage:Number(m[2])};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is affected by a Special Condition, this attack does (\d+) more damage$/i))) return {bonusIfOpponentSpecialCondition:Number(m[1])};
@@ -9271,7 +9272,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           opp.active.hp -= dmg;
           this.showDmg(side === 'player' ? 'opp-active' : 'player-active', dmg, prev.isWeak);
           this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に${dmg}ダメージ！${prev.isWeak ? '（弱点+20！）' : ''}`);
-        }else if(!(ge.opponentPokemonDamage>0)){
+        }else if(!(ge.opponentPokemonDamage>0)&&!(ge.randomOpponentPokemonDamage>0)){
           this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に0ダメージ！`);
         }
         if(ge.opponentPokemonDamage>0&&choice?.targetZone){
@@ -9334,6 +9335,30 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           const targets=opp.bench.filter(b=>!ge.damagedBenchOnly||b.hp<b.maxHp);
           targets.forEach(b=>{b.hp-=this.attackDamageAfterDefenses(b,genericBenchAllDamage);});
           if(targets.length)this.log(`相手のベンチ${ge.damagedBenchOnly?'ダメージを受けているポケモン':''}にも${genericBenchAllDamage}ダメージ！`);
+        }
+        if(ge.randomOpponentPokemonDamage>0){
+          const hitCount=Math.max(1,Math.min(4,Number(ge.randomOpponentPokemonDamageCount)||1));
+          const baseDamage=Number(ge.randomOpponentPokemonDamage)||0;
+          let hitTotal=0;
+          for(let hit=0;hit<hitCount;hit++){
+            const targets=[
+              ...(opp.active?[{zone:'active',index:0,inst:opp.active}]:[]),
+              ...opp.bench.map((inst,index)=>({zone:'bench',index,inst}))
+            ].filter(target=>target.inst&&target.inst.hp>0);
+            if(!targets.length) break;
+            const target=targets[Math.floor(Math.random()*targets.length)];
+            const targetCard=CARD_MAP[target.inst.cardId];
+            const isWeak=!!(targetCard?.weakness&&targetCard.weakness!=='None'&&targetCard.weakness===attC.type);
+            const rawDamage=baseDamage+(isWeak?20:0);
+            const amount=this.isAttackProtected(target.inst)?0:this.attackDamageAfterDefenses(target.inst,rawDamage);
+            target.inst.hp-=amount;
+            hitTotal++;
+            if(target.zone==='active'&&amount>0){
+              this.showDmg(side==='player'?'opp-active':'player-active',amount,isWeak);
+            }
+            this.log(`りゅうせいぐん！相手の${getCardDisplayName(targetCard)}に${amount}ダメージ${isWeak?'（弱点+20）':''}！`);
+          }
+          this.log(`りゅうせいぐん：ランダムに${hitTotal}回命中（最大${hitCount}回）。`);
         }
         if(ge.selfBenchDamage>0 && s.bench.length){
           for(let bi=s.bench.length-1;bi>=0;bi--){
