@@ -1497,6 +1497,25 @@
 
     const CARD_MAP = Object.fromEntries(CARDS.map(c => [c.id, c]));
 
+    // Different printings of the same Pocket card share a deck identity. Collection
+    // counts stay tied to the exact owned print, while deck copy limits use this identity.
+    function getDeckCardIdentity(cardOrId) {
+      const card = typeof cardOrId === 'string' ? CARD_MAP[cardOrId] : cardOrId;
+      if (!card) return 'missing:' + String(cardOrId || '');
+      const deckNumber = card.deckBuilderNr ?? card.enDetail?.deckBuilderNr;
+      if (deckNumber !== undefined && deckNumber !== null && String(deckNumber).trim() !== '') {
+        return 'deck:' + String(deckNumber).trim();
+      }
+      const rawName = String(card.jpName || card.name || card.id || '');
+      const normalizedName = typeof rawName.normalize === 'function' ? rawName.normalize('NFKC') : rawName;
+      return 'name:' + normalizedName.toLowerCase().replace(/[\s　]+/g, '');
+    }
+    function countDeckCardIdentity(cards, cardOrId) {
+      const identity = getDeckCardIdentity(cardOrId);
+      return (Array.isArray(cards) ? cards : []).reduce((total, id) =>
+        total + (getDeckCardIdentity(id) === identity ? 1 : 0), 0);
+    }
+
     /* v31: effects are keyed by (card id : attack name) so same-named attacks on other cards can never collide. */
     const ATTACK_FX = {
       'c_charizard_ex:ぐれんのあらし': 'trash2', 'c_mewtwo_ex:サイコドライブ': 'trash2',
@@ -1588,14 +1607,17 @@
 
       isValidDeck(cards, collection) {
         if (!Array.isArray(cards) || cards.length !== 20 || !collection || typeof collection !== 'object') return false;
-        const counts = {};
+        const countsById = {};
+        const countsByIdentity = {};
         let hasBasic = false;
         for (const id of cards) {
           const card = typeof id === 'string' ? CARD_MAP[id] : null;
           if (!card || card.collectionOnly) return false;
-          counts[id] = (counts[id] || 0) + 1;
+          countsById[id] = (countsById[id] || 0) + 1;
+          const identity = getDeckCardIdentity(card);
+          countsByIdentity[identity] = (countsByIdentity[identity] || 0) + 1;
           const owned = Number(collection[id]) || 0;
-          if (counts[id] > 2 || counts[id] > owned) return false;
+          if (countsByIdentity[identity] > 2 || countsById[id] > owned) return false;
           if (card.category === 'Pokemon' && card.stage === 'Basic') hasBasic = true;
         }
         return hasBasic;
@@ -1627,12 +1649,15 @@
           loaded = { ...defaults, ...loaded, id: accId };
           const savedCollection = loaded.collection && typeof loaded.collection === 'object' && !Array.isArray(loaded.collection)
             ? loaded.collection : {};
+          // Keep saved print IDs even when their set's card data has not loaded yet.
           loaded.collection = {};
+          Object.entries(savedCollection).forEach(([cardId, rawCount]) => {
+            if (typeof cardId === 'string' && cardId.trim()) {
+              loaded.collection[cardId] = this.sanitizeCount(rawCount, 0, 999);
+            }
+          });
           CARDS.forEach(c => {
-            const rawCount = savedCollection[c.id];
-            loaded.collection[c.id] = rawCount === undefined
-              ? defaults.collection[c.id]
-              : this.sanitizeCount(rawCount, 0, 999);
+            if (loaded.collection[c.id] === undefined) loaded.collection[c.id] = defaults.collection[c.id] || 0;
           });
           const savedDecks = Array.isArray(loaded.decks) ? loaded.decks : defaults.decks;
           loaded.decks = savedDecks
@@ -1642,7 +1667,8 @@
               energies: Array.isArray(d.energies) ? [...new Set(d.energies.filter(t => ENERGY_TYPES.includes(t)))].slice(0, 3) : [],
               cards: [...d.cards]
             }))
-            .filter(d => this.isValidDeck(d.cards, loaded.collection))
+            // Defer gameplay/ownership validation until supplemental card shards are loaded.
+            .filter(d => d.cards.length <= 60 && d.cards.every(id => typeof id === 'string'))
             .slice(0, 8);
           if (loaded.decks.length === 0) {
             loaded.decks = [{ name: '復旧用デッキ（未編成）', energies: ['Fire'], cards: [] }];
@@ -1834,12 +1860,18 @@
               if (imp[key] !== undefined && (typeof imp[key] !== 'number' || !Number.isFinite(imp[key]) || imp[key] < 0)) throw new Error();
             }
             const importedCollection = {};
-            for (const card of CARDS) {
-              const count = imp.collection[card.id] === undefined ? 0 : imp.collection[card.id];
-              if (typeof count !== 'number' || !Number.isFinite(count) || !Number.isInteger(count) || count < 0 || count > 999) throw new Error();
-              importedCollection[card.id] = count;
-            }
-            if (!imp.decks.length || imp.decks.some(d => !d || !this.isValidDeck(d.cards, importedCollection))) throw new Error();
+            Object.entries(imp.collection).forEach(([cardId, count]) => {
+              if (typeof cardId !== 'string' || !cardId.trim() || typeof count !== 'number' ||
+                  !Number.isFinite(count) || !Number.isInteger(count) || count < 0 || count > 999) throw new Error();
+              importedCollection[cardId] = count;
+            });
+            CARDS.forEach(card => {
+              if (importedCollection[card.id] === undefined) importedCollection[card.id] = 0;
+            });
+            // Preserve saved decks while cards are still loading; full validation happens before use.
+            const validDeckShape = d => d && typeof d === 'object' && Array.isArray(d.cards) &&
+              d.cards.length <= 60 && d.cards.every(id => typeof id === 'string');
+            if (!imp.decks.length || imp.decks.some(d => !validDeckShape(d))) throw new Error();
             imp.id = this.currentId;
             localStorage.setItem(this.DATA_PREFIX + this.currentId, JSON.stringify(imp));
             this.loadAccount(this.currentId); this.openModal();
@@ -1888,9 +1920,10 @@
         for (const id of cards) {
           const card = typeof id === 'string' ? CARD_MAP[id] : null;
           if (!card) return null;
-          const count = (counts.get(card.name) || 0) + 1;
+          const identity = getDeckCardIdentity(card);
+          const count = (counts.get(identity) || 0) + 1;
           if (count > 2) return null;
-          counts.set(card.name, count);
+          counts.set(identity, count);
           if (card.category === 'Pokemon' && card.stage === 'Basic') hasBasic = true;
         }
         const normalizedEnergies = [...new Set(energies)];
@@ -6879,11 +6912,22 @@ const PACK_CATALOG_DATA = {
                 card.detailStatus='available-en'; card.category=category; card.type=category==='Pokemon'?type:'Colorless'; card.stage=enDetail.stage; card.evolvesFrom=enDetail.evolvesFrom||null; card.hp=enDetail.hp; card.weakness=enDetail.weakness; card.retreat=enDetail.retreat; card.attacks=attacks; card.ability=ability; card.text=text; card.isEx=!!g.ex; card.pointValue=Number(g.points)||1;
                 if(col && record.rarity){card.rarity=record.rarity;card.catalogRarity=record.rarity;card.rarityEstimated=!!record.rarityEstimated;}
               }
-              // Unlock only clean Pokémon attacks with fixed damage and no unsupported ability/effect.
+              // Reprints with the same deckBuilderNr are the same playable game card.
+              // Reuse supported gameplay/effect data so alternate prints aren't left collection-only.
               const simplePokemon=category==='Pokemon' && attacks.length>0 && attacks.every(a=>!a.unsupportedEffect) && !ability && !text && !g.subtype_2;
-              const alreadyPlayable=CARDS.some(c=>c!==card && !c.collectionOnly && String(c.deckBuilderNr||'')===String(g.deckBuilderNr||''));
-              if(simplePokemon && !alreadyPlayable && !unlockedDeckNr.has(String(g.deckBuilderNr))){
-                card.collectionOnly=false; card.detailStatus=JAPANESE_CARD_DETAILS[record.key]?'available':'available-en'; unlockedDeckNr.add(String(g.deckBuilderNr));
+              const gameNumber = g.deckBuilderNr == null ? '' : String(g.deckBuilderNr);
+              const playablePeer = gameNumber ? CARDS.find(c => c !== card && !c.collectionOnly &&
+                c.category === 'Pokemon' && String(c.deckBuilderNr ?? c.enDetail?.deckBuilderNr ?? '') === gameNumber) : null;
+              if(playablePeer && category==='Pokemon'){
+                card.category=playablePeer.category; card.stage=playablePeer.stage; card.evolvesFrom=playablePeer.evolvesFrom;
+                card.type=playablePeer.type; card.hp=playablePeer.hp; card.weakness=playablePeer.weakness; card.retreat=playablePeer.retreat;
+                card.attacks=(playablePeer.attacks||[]).map(a=>({...a,cost:Array.isArray(a.cost)?[...a.cost]:[]}));
+                card.ability=playablePeer.ability?{...playablePeer.ability}:null; card.text=playablePeer.text||'';
+                card.isEx=!!playablePeer.isEx; card.pointValue=playablePeer.pointValue||1;
+                card.collectionOnly=false; card.detailStatus=playablePeer.detailStatus||'available-en';
+              }else if(simplePokemon && !unlockedDeckNr.has(gameNumber)){
+                card.collectionOnly=false; card.detailStatus=JAPANESE_CARD_DETAILS[record.key]?'available':'available-en';
+                if(gameNumber) unlockedDeckNr.add(gameNumber);
               }
             }
           }
@@ -7371,11 +7415,30 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       },
 
       getOwnershipIssues(cards) {
-        const needed = {};
-        (cards || []).forEach(id => { needed[id] = (needed[id] || 0) + 1; });
-        return Object.entries(needed).filter(([id, count]) =>
-          !CARD_MAP[id] || CARD_MAP[id].collectionOnly || count > Number(accountMgr.data?.collection?.[id] || 0)
-        ).map(([id, count]) => ({ id, count, owned: Number(accountMgr.data?.collection?.[id] || 0) }));
+        const neededById = {};
+        const neededByIdentity = {};
+        const identityFirstId = {};
+        (cards || []).forEach(id => {
+          neededById[id] = (neededById[id] || 0) + 1;
+          const card = CARD_MAP[id];
+          if (card) {
+            const identity = getDeckCardIdentity(card);
+            neededByIdentity[identity] = (neededByIdentity[identity] || 0) + 1;
+            identityFirstId[identity] = identityFirstId[identity] || id;
+          }
+        });
+        const issues = [];
+        Object.entries(neededById).forEach(([id, count]) => {
+          const card = CARD_MAP[id];
+          const owned = Number(accountMgr.data?.collection?.[id] || 0);
+          if (!card || card.collectionOnly || count > owned) {
+            issues.push({ id, count, owned, reason: !card ? 'missing' : card.collectionOnly ? 'unavailable' : 'ownership' });
+          }
+        });
+        Object.entries(neededByIdentity).forEach(([identity, count]) => {
+          if (count > 2) issues.push({ id: identityFirstId[identity], count, owned: 2, reason: 'copies' });
+        });
+        return issues;
       },
 
       showMoreDex() { this.dexLimit += 72; this.render(); },
@@ -7400,10 +7463,14 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       clearDeck() { this.tempDeck = []; this.render(); },
 
       addCard(id) {
-        const c = CARD_MAP[id]; if (c?.collectionOnly) { ui.toast('このカードは対戦用データ未登録のためデッキに入れられません'); return; } if (!c || this.tempDeck.length >= 20) { if (this.tempDeck.length >= 20) ui.toast('デッキは20枚までです'); return; }
-        if (this.tempDeck.filter(x => CARD_MAP[x].name === c.name).length >= 2) { ui.toast('同名カードは2枚までです'); return; }
-        const owned = accountMgr.data.collection[id] || 0;
-        if (this.tempDeck.filter(x => x === id).length >= owned) { ui.toast(`所持枚数(${owned}枚)を超えています`); return; }
+        const c = CARD_MAP[id];
+        if (!c) { ui.toast('カードデータを読み込めませんでした。図鑑を再読み込みしてください'); return; }
+        if (c.collectionOnly) { ui.toast('このカードは対戦用データ未登録のためデッキに入れられません'); return; }
+        if (this.tempDeck.length >= 20) { ui.toast('デッキは20枚までです'); return; }
+        if (countDeckCardIdentity(this.tempDeck, c) >= 2) { ui.toast('同じカードは収録違いを含めて2枚までです'); return; }
+        const owned = Number(accountMgr.data?.collection?.[id] || 0);
+        const alreadyInDeck = this.tempDeck.filter(x => x === id).length;
+        if (alreadyInDeck >= owned) { ui.toast(`所持枚数(${owned}枚)を超えています`); return; }
         this.tempDeck.push(id); sound.draw(); this.render();
       },
 
@@ -7425,7 +7492,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const ownershipIssues = this.getOwnershipIssues(this.tempDeck);
         if (ownershipIssues.length) {
           const first = ownershipIssues[0];
-          ui.toast(`所持枚数不足：${getCardDisplayName(CARD_MAP[first.id])}（所持${first.owned}枚 / 必要${first.count}枚）`);
+          if (first.reason === 'copies') ui.toast('同じカードは収録違いを含めて2枚までです');
+          else if (first.reason === 'unavailable') ui.toast('対戦データ未登録のカードが含まれています。カードデータの読み込み後に再度お試しください');
+          else if (first.reason === 'missing') ui.toast('デッキに登録されていないカードが含まれています');
+          else ui.toast(`所持枚数不足：${getCardDisplayName(CARD_MAP[first.id])}（所持${first.owned}枚 / 必要${first.count}枚）`);
           return;
         }
         if (!this.tempDeck.some(id => CARD_MAP[id].category === 'Pokemon' && CARD_MAP[id].stage === 'Basic')) {
@@ -7573,7 +7643,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         document.getElementById('pool-grid').innerHTML = visibleCards.map(c => {
           const owned = accountMgr.data.collection[c.id] || 0;
-          const inD = this.tempDeck.filter(x => x === c.id).length;
+          const inD = countDeckCardIdentity(this.tempDeck, c);
           if (this.viewMode === 'dex') {
             return `<div class="flex flex-col items-center bg-white/85 p-2 rounded-2xl border border-slate-200">${ui.renderMiniCard(c.id, { unowned: owned === 0, onClick: `ui.openCardModal(CARD_MAP['${c.id}'])` })}<div class="flex justify-between w-full mt-1.5 px-1"><span class="text-[10px] font-bold">所持:${owned}</span><button onclick="deckBuilder.craftCard('${c.id}')" class="px-2 py-0.5 rounded bg-fuchsia-600 text-white text-[10px] font-black">交換 ${c.rarityEstimated ? 100 : (costMap[c.rarity] || 100)}P</button></div></div>`;
           }
@@ -7581,7 +7651,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }).join('') + (this.viewMode === 'dex' && visibleCards.length < filtered.length ? `<button onclick="deckBuilder.showMoreDex()" class="col-span-full py-3 rounded-xl bg-sky-100 text-sky-800 text-xs font-black">さらに72枚表示（残り${filtered.length - visibleCards.length}枚）</button>` : '');
 
         const counts = {}; let pC = 0, tC = 0;
-        this.tempDeck.forEach(id => { counts[id] = (counts[id] || 0) + 1; if (CARD_MAP[id].category === 'Pokemon') pC++; else tC++; });
+        this.tempDeck.forEach(id => {
+          counts[id] = (counts[id] || 0) + 1;
+          if (CARD_MAP[id]?.category === 'Pokemon') pC++; else tC++;
+        });
         const badge = document.getElementById('deck-count-badge');
         badge.textContent = `${this.tempDeck.length} / 20枚`;
         badge.className = this.tempDeck.length === 20 ? 'px-3 py-1 rounded-full text-xs bg-emerald-100 text-emerald-800 font-black' : 'px-3 py-1 rounded-full text-xs bg-amber-100 text-amber-800 font-black';
@@ -7592,7 +7665,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         document.getElementById('current-deck-list').innerHTML = Object.entries(counts).map(([id, cnt]) => {
           const c = CARD_MAP[id];
-          return `<div class="py-1.5 px-2 flex items-center justify-between text-xs hover:bg-white rounded-xl"><div class="flex items-center gap-2 truncate cursor-pointer" onclick="ui.openCardModal(CARD_MAP['${id}'])">${renderTypeBadgeSvg(c.type, 15)}<span class="font-extrabold truncate">${escapeHtml(getCardDisplayName(c))}</span></div><div class="flex items-center gap-1.5 shrink-0"><span class="font-black text-sky-700">×${cnt}</span><button onclick="deckBuilder.removeCard('${id}')" class="w-5 h-5 rounded bg-slate-200 font-black">-</button><button onclick="deckBuilder.addCard('${id}')" class="w-5 h-5 rounded bg-emerald-500 text-white font-black">+</button></div></div>`;
+          const safeId = escapeHtml(JSON.stringify(id));
+          if (!c) return `<div class="py-1.5 px-2 flex items-center justify-between text-xs rounded-xl bg-amber-50"><span class="truncate text-amber-800">未登録カード：${escapeHtml(id)} ×${cnt}</span><button onclick="deckBuilder.removeCard(${safeId})" class="w-6 h-6 rounded bg-slate-200 font-black">-</button></div>`;
+          return `<div class="py-1.5 px-2 flex items-center justify-between text-xs hover:bg-white rounded-xl"><div class="flex items-center gap-2 truncate cursor-pointer" onclick="ui.openCardModal(CARD_MAP[${safeId}])">${renderTypeBadgeSvg(c.type, 15)}<span class="font-extrabold truncate">${escapeHtml(getCardDisplayName(c))}</span></div><div class="flex items-center gap-1.5 shrink-0"><span class="font-black text-sky-700">×${cnt}</span><button onclick="deckBuilder.removeCard(${safeId})" class="w-5 h-5 rounded bg-slate-200 font-black">-</button><button onclick="deckBuilder.addCard(${safeId})" class="w-5 h-5 rounded bg-emerald-500 text-white font-black">+</button></div></div>`;
         }).join('') || '<div class="text-xs text-slate-400 text-center py-8 font-bold">カードを追加してください</div>';
       }
     };
