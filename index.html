@@ -6639,6 +6639,11 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^This attack (?:also )?does (\d+) damage to 1 of your opponent's (?:Pokémon|Pokemon)(?: that (?:has damage on it|have damage on them))?$/i))) return {opponentPokemonDamage:Number(m[1]),opponentPokemonDamageRequiresDamage:/that (?:has damage on it|have damage on them)/i.test(t)};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is (Poisoned|Burned), this attack does (\d+) more damage$/i))) return {bonusIfOpponentStatus:m[1].toLowerCase(),bonusIfOpponentStatusDamage:Number(m[2])};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is affected by a Special Condition, this attack does (\d+) more damage$/i))) return {bonusIfOpponentSpecialCondition:Number(m[1])};
+        if(/^Flip a coin\. If heads, during your opponent's next turn, prevent all damage from—and effects of—attacks done to this (?:Pokémon|Pokemon)$/i.test(t)) return {preventAttackDamageNextTurnIfHeads:true};
+        if(/^During your opponent's next turn, the Defending (?:Pokémon|Pokemon) can't retreat$/i.test(t)) return {defendingCannotRetreatNextTurn:true};
+        if((m=t.match(/^During your opponent's next turn, this (?:Pokémon|Pokemon) takes [−-](\d+) damage from attacks$/i))) return {selfAttackDamageReductionNextTurn:Number(m[1])};
+        if(/^During your next turn, this (?:Pokémon|Pokemon) can't attack$/i.test(t)) return {selfCannotAttackNextTurn:true};
+        if(/^Flip a coin\. If heads, the Defending (?:Pokémon|Pokemon) can't attack during your opponent's next turn$/i.test(t)) return {defendingCannotAttackNextTurnIfHeads:true};
         if((m=t.match(/^This (?:Pokémon|Pokemon) also takes (\d+) damage$/i))) return {selfDamage:Number(m[1])};
         if((m=t.match(/^This (?:Pokémon|Pokemon) also does (\d+) damage to itself$/i))) return {selfDamage:Number(m[1])};
         if((m=t.match(/^Heal (\d+) damage from this (?:Pokémon|Pokemon)$/i))) return {selfHeal:Number(m[1])};
@@ -7760,7 +7765,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       createInst(cardId, turnPlayed = 0) {
         const b = CARD_MAP[cardId];
-        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, under: [] };
+        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, under: [] };
       },
 
       pickRandomEnergy(types) {
@@ -7885,10 +7890,15 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const statusEffects=[...new Set(rawStatusEffects)];
         const statusUntilTurn=Number(inst.statusUntilTurn||0);
         if(!Number.isInteger(statusUntilTurn)||statusUntilTurn<0||statusUntilTurn>100000) return null;
+        const effectTurnFields=['preventAttackDamageUntilTurn','attackDamageReductionUntilTurn','retreatBlockedUntilTurn','attackBlockedUntilTurn'];
+        const effectTurns={};
+        for(const key of effectTurnFields){const value=Number(inst[key]||0);if(!Number.isInteger(value)||value<0||value>100000)return null;effectTurns[key]=value;}
+        const attackDamageReduction=Number(inst.attackDamageReduction||0);
+        if(!Number.isInteger(attackDamageReduction)||attackDamageReduction<0||attackDamageReduction>200)return null;
         return {
           cardId: inst.cardId, hp: Math.floor(hp), maxHp: Math.floor(maxHp),
           energies: [...inst.energies], turnPlayed,
-          abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, under: [...under]
+          abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, ...effectTurns, attackDamageReduction, under: [...under]
         };
       },
 
@@ -8757,6 +8767,17 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       energyEffectType(code) { return ({G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal',C:'Colorless'})[String(code||'').toUpperCase()]||null; },
 
+      isAttackProtected(inst) {
+        return !!inst && Number(inst.preventAttackDamageUntilTurn||0)>=this.turn;
+      },
+
+      attackDamageAfterDefenses(inst, amount) {
+        let damage=Math.max(0,Number(amount)||0);
+        if(this.isAttackProtected(inst))return 0;
+        if(inst && Number(inst.attackDamageReductionUntilTurn||0)>=this.turn) damage-=Math.max(0,Number(inst.attackDamageReduction)||0);
+        return Math.max(0,damage);
+      },
+
       calcDamagePreview(attInst, atk, defInst, side) {
         const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
         const attC = CARD_MAP[attInst.cardId], defC = CARD_MAP[defInst.cardId];
@@ -8802,7 +8823,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         const isWeak = !atk.genericEffect?.ignoreWeakness && defC.weakness && defC.weakness !== 'None' && defC.weakness === attC.type && dmg > 0;
         if (isWeak) dmg += 20;
-        return { final: dmg, isWeak };
+        const final=this.attackDamageAfterDefenses(defInst,dmg);
+        return { final, isWeak: isWeak && final>0, isProtected:this.isAttackProtected(defInst) };
       },
 
       resolveMoltresAbility(side, sourceZ, sourceI, benchIndex) {
@@ -8983,6 +9005,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
         if (!s.active || !opp.active) return;
+        if(Number(s.active.attackBlockedUntilTurn||0)>=this.turn){
+          if(side==='player')ui.toast('ワザの効果で、このポケモンは今の番ワザを使えません');
+          return;
+        }
         const attC = CARD_MAP[s.active.cardId];
         const attackingInst = s.active;
         const declaredAtk = attC.attacks[atkIdx];
@@ -9139,7 +9165,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         if(ge.discardAllEnergy){const removed=s.active.energies.length;s.active.energies=[];if(removed)this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをすべてトラッシュ。`);}
         if(ge.discardRandomEnergy&&s.active.energies.length){const index=Math.floor(Math.random()*s.active.energies.length);s.active.energies.splice(index,1);this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをランダムに1個トラッシュ。`);}
-        const opponentEnergyDiscards=ge.coinDiscardOpponentRandomEnergyPerHeads?coinHeads:((ge.discardOpponentRandomEnergy||(ge.coinThenDiscardOpponentRandomEnergy&&coinHeads>0))?1:0);
+        const opponentActiveProtected=this.isAttackProtected(opp.active);
+        const opponentEnergyDiscards=opponentActiveProtected?0:(ge.coinDiscardOpponentRandomEnergyPerHeads?coinHeads:((ge.discardOpponentRandomEnergy||(ge.coinThenDiscardOpponentRandomEnergy&&coinHeads>0))?1:0));
         let removedOpponentEnergy=0;
         for(let n=0;n<opponentEnergyDiscards&&opp.active.energies.length;n++){const index=Math.floor(Math.random()*opp.active.energies.length);opp.active.energies.splice(index,1);removedOpponentEnergy++;}
         if(removedOpponentEnergy)this.log(`相手のバトルポケモンのエネルギーをランダムに${removedOpponentEnergy}個トラッシュ！`);
@@ -9168,39 +9195,63 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(ge.opponentPokemonDamage>0&&choice?.targetZone){
           const target=choice.targetZone==='active'?opp.active:opp.bench[choice.targetIndex];
           if(target){
-            target.hp-=Number(ge.opponentPokemonDamage);
-            if(choice.targetZone==='active') this.showDmg(side==='player'?'opp-active':'player-active',Number(ge.opponentPokemonDamage),false);
-            this.log(`ワザ効果！${getCardDisplayName(CARD_MAP[target.cardId])}に${Number(ge.opponentPokemonDamage)}ダメージ！`);
+            const extraDamage=this.attackDamageAfterDefenses(target,Number(ge.opponentPokemonDamage));
+            target.hp-=extraDamage;
+            if(choice.targetZone==='active'&&extraDamage>0) this.showDmg(side==='player'?'opp-active':'player-active',extraDamage,false);
+            this.log(`ワザ効果！${getCardDisplayName(CARD_MAP[target.cardId])}に${extraDamage}ダメージ！`);
           }
         }
-        if(opp.active&&ge.opponentStatuses) ge.opponentStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
-        if(opp.active&&ge.opponentStatusesIfHeads&&coinHeads>0) ge.opponentStatusesIfHeads.forEach(status=>this.applySpecialCondition(opp.active,status));
-        if(opp.active&&ge.opponentStatusesIfAtLeastHeads&&coinHeads>=Number(ge.opponentStatusesIfAtLeastHeads.count||1)) ge.opponentStatusesIfAtLeastHeads.statuses.forEach(status=>this.applySpecialCondition(opp.active,status));
+        if(opp.active&&!opponentActiveProtected&&ge.opponentStatuses) ge.opponentStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
+        if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfHeads&&coinHeads>0) ge.opponentStatusesIfHeads.forEach(status=>this.applySpecialCondition(opp.active,status));
+        if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfAtLeastHeads&&coinHeads>=Number(ge.opponentStatusesIfAtLeastHeads.count||1)) ge.opponentStatusesIfAtLeastHeads.statuses.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(s.active&&ge.selfStatuses) ge.selfStatuses.forEach(status=>this.applySpecialCondition(s.active,status));
         if(ge.bothActiveStatuses){
           if(s.active) ge.bothActiveStatuses.forEach(status=>this.applySpecialCondition(s.active,status));
-          if(opp.active) ge.bothActiveStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
+          if(opp.active&&!opponentActiveProtected) ge.bothActiveStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
+        }
+        if(ge.preventAttackDamageNextTurnIfHeads&&coinHeads>0){
+          s.active.preventAttackDamageUntilTurn=this.turn+1;
+          this.log('次の相手の番、このポケモンはワザのダメージと効果を受けない！');
+        }
+        if(ge.selfAttackDamageReductionNextTurn>0){
+          s.active.attackDamageReduction=Number(ge.selfAttackDamageReductionNextTurn);
+          s.active.attackDamageReductionUntilTurn=this.turn+1;
+          this.log(`次の相手の番、このポケモンが受けるワザのダメージを${s.active.attackDamageReduction}軽減！`);
+        }
+        if(ge.selfCannotAttackNextTurn){
+          s.active.attackBlockedUntilTurn=this.turn+2;
+          this.log('次の自分の番、このポケモンはワザを使えない！');
+        }
+        if(!opponentActiveProtected&&ge.defendingCannotRetreatNextTurn){
+          opp.active.retreatBlockedUntilTurn=this.turn+1;
+          this.log('相手のバトルポケモンは次の相手の番、にげられない！');
+        }
+        if(!opponentActiveProtected&&ge.defendingCannotAttackNextTurnIfHeads&&coinHeads>0){
+          opp.active.attackBlockedUntilTurn=this.turn+1;
+          this.log('相手のバトルポケモンは次の相手の番、ワザを使えない！');
         }
 
         if (atk.fx === 'bench_all20' && opp.bench.length) {
-          opp.bench.forEach(b => { b.hp -= 20; });
+          opp.bench.forEach(b => { b.hp -= this.attackDamageAfterDefenses(b,20); });
           this.log('相手のベンチ全員にも20ダメージ！');
         }
         if (atk.fx === 'bench_snipe30' && choice && choice.bench >= 0 && opp.bench[choice.bench]) {
-          opp.bench[choice.bench].hp -= 30;
-          this.log(`相手の${getCardDisplayName(CARD_MAP[opp.bench[choice.bench].cardId])}にも30ダメージ！`);
+          const target=opp.bench[choice.bench], amount=this.attackDamageAfterDefenses(target,30);
+          target.hp -= amount;
+          this.log(`相手の${getCardDisplayName(CARD_MAP[target.cardId])}にも${amount}ダメージ！`);
         } else if(genericBenchDamage>0 && choice && choice.bench>=0 && opp.bench[choice.bench]){
-          opp.bench[choice.bench].hp-=genericBenchDamage;
-          this.log(`相手の${getCardDisplayName(CARD_MAP[opp.bench[choice.bench].cardId])}にも${genericBenchDamage}ダメージ！`);
+          const target=opp.bench[choice.bench], amount=this.attackDamageAfterDefenses(target,genericBenchDamage);
+          target.hp-=amount;
+          this.log(`相手の${getCardDisplayName(CARD_MAP[target.cardId])}にも${amount}ダメージ！`);
         }
         if(genericBenchAllDamage>0 && opp.bench.length){
           const targets=opp.bench.filter(b=>!ge.damagedBenchOnly||b.hp<b.maxHp);
-          targets.forEach(b=>{b.hp-=genericBenchAllDamage;});
+          targets.forEach(b=>{b.hp-=this.attackDamageAfterDefenses(b,genericBenchAllDamage);});
           if(targets.length)this.log(`相手のベンチ${ge.damagedBenchOnly?'ダメージを受けているポケモン':''}にも${genericBenchAllDamage}ダメージ！`);
         }
         if(ge.selfBenchDamage>0 && s.bench.length){
           for(let bi=s.bench.length-1;bi>=0;bi--){
-            s.bench[bi].hp-=Number(ge.selfBenchDamage);
+            s.bench[bi].hp-=this.attackDamageAfterDefenses(s.bench[bi],Number(ge.selfBenchDamage));
             if(s.bench[bi].hp<=0)this.checkKO(side,'bench',bi,true);
           }
           this.log(`自分のベンチ全員にも${Number(ge.selfBenchDamage)}ダメージ！`);
@@ -9346,6 +9397,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           ui.toast('今はにげられません'); return;
         }
         if(['Asleep','Paralyzed'].includes(this.p.active.status)){ui.toast(this.p.active.status==='Asleep'?'ねむり状態のためにげられません':'マヒ状態のためにげられません');return;}
+        if(Number(this.p.active.retreatBlockedUntilTurn||0)>=this.turn){ui.toast('ワザの効果で、今はにげられません');return;}
         const cost = Math.max(0, (CARD_MAP[this.p.active.cardId].retreat || 0) - this.p.retreatDiscount);
         if (this.p.active.energies.length < cost) { ui.toast(`にげるエネルギーが足りません (必要:${cost}個)`); return; }
         ui.openSelectModal(`にげる (エネ${cost}個消費) - 交代先を選択`, this.p.bench.map((b, bi) => `<div onclick="ui.closeSelectModal();battle.startRetreat(${bi},${cost});" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-sky-700 mt-1">交代</span></div>`).join(''));
@@ -9553,6 +9605,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           : '<span class="text-slate-400">なし</span>';
         const conditionLabels={Poisoned:'どく',Burned:'やけど',Asleep:'ねむり',Paralyzed:'マヒ',Confused:'こんらん'};
         const conditionSummary=[...(inst.statusEffects||[]),...(inst.status?[inst.status]:[])].map(x=>conditionLabels[x]).filter(Boolean).join('・');
+        const temporaryEffects=[];
+        if(this.isAttackProtected(inst))temporaryEffects.push('ワザのダメージ・効果を防御中');
+        if(Number(inst.attackDamageReductionUntilTurn||0)>=this.turn&&Number(inst.attackDamageReduction||0)>0)temporaryEffects.push(`ワザのダメージ-${Number(inst.attackDamageReduction)}`);
+        if(Number(inst.retreatBlockedUntilTurn||0)>=this.turn)temporaryEffects.push('にげられない');
+        if(Number(inst.attackBlockedUntilTurn||0)>=this.turn)temporaryEffects.push('ワザを使えない');
+        const temporaryEffectSummary=temporaryEffects.join('・');
         const fieldStatusHtml = `
           <div class="bg-slate-100 border border-slate-300 rounded-2xl p-2.5 mb-2 text-xs space-y-1">
             <div class="flex justify-between items-center font-black">
@@ -9564,6 +9622,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
               ${energyBadges}
             </div>
             ${conditionSummary?'<div class="text-[11px] font-black text-rose-700">状態：'+conditionSummary+'</div>':''}
+            ${temporaryEffectSummary?'<div class="text-[11px] font-black text-sky-700">一時効果：'+temporaryEffectSummary+'</div>':''}
           </div>
         `;
 
@@ -9577,7 +9636,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if (z === 'active' && this.o.active) {
             prevList = c.attacks.map(a => this.calcDamagePreview(inst, a, this.o.active, 'player'));
             c.attacks.forEach((a, ai) => {
-              const ok = this.canPay(inst, a.cost) && !this.isFirstTurnFor('player') && !['Asleep','Paralyzed'].includes(inst.status);
+              const ok = this.canPay(inst, a.cost) && !this.isFirstTurnFor('player') && !['Asleep','Paralyzed'].includes(inst.status) && Number(inst.attackBlockedUntilTurn||0)<this.turn;
               act += `<button ${ok ? '' : 'disabled'} onclick="battle.attack('player',${ai});ui.closeCardModal();" class="px-4 py-2 rounded-xl ${ok ? 'bg-gradient-to-r from-rose-500 to-orange-500 text-white font-black shadow' : 'bg-slate-200 text-slate-400'} text-xs">${a.name} (${prevList[ai].final})</button>`;
             });
           }
