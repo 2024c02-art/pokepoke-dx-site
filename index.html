@@ -1562,7 +1562,7 @@
       const card = typeof cardOrId === 'string' ? CARD_MAP[cardOrId] : cardOrId;
       if (!card) return false;
       if (card.id === 't_rare_candy') return true;
-      const knownNames = new Set(['ふしぎなアメ', 'ふしぎなあめ', '不思議なアメ', 'rare candy']);
+      const knownNames = new Set(['ふしぎなアメ', 'ふしぎなあめ', '不思議なアメ', 'rare candy'].map(normalizeEvolutionToken));
       return [card.name, card.jpName, card.sourceNameEN, card.enDetail?.name]
         .map(normalizeEvolutionToken).some(name => knownNames.has(name));
     }
