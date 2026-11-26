@@ -37,6 +37,19 @@ assert.equal(druddigonB1.attacks[0].jpName,'ギガクロー');
 assert.equal(druddigonB1.attacks[0].jpText,'コインを2回投げ、すべてウラなら、このワザは失敗。');
 assert.equal(druddigonB1.ability,null);
 
+const druddigonB2b = makeCard();
+apply(druddigonB2b,{
+  name:'Druddigon',category:'Pokemon',type:'Dragon',stage:'Basic',evolvesFrom:'',hp:100,
+  weakness:'None',retreat:2,attacks:[{name:'Clutch',damage:40,damageLabel:'40',cost:['Colorless','Colorless'],text:"During your opponent's next turn, the Defending Pokémon can't retreat.",genericEffect:{defendingCannotRetreatNextTurn:true},unsupportedEffect:false}],
+  ability:null,text:'',ex:false,points:1
+},{nameJa:'クリムガン',hp:100,typeJa:'ドラゴン',stageJa:'たね',retreatCost:2,abilities:[],attacks:[{name:'わしづかみ',damage:'40',effect:'次の相手の番、このワザを受けたポケモンはにげるができない。'}]},[
+  {name:'Clutch',damage:40,damageLabel:'40',cost:['Colorless','Colorless'],text:"During your opponent's next turn, the Defending Pokémon can't retreat.",genericEffect:{defendingCannotRetreatNextTurn:true},unsupportedEffect:false}
+],null,'');
+assert.equal(druddigonB2b.dataVerified,true);
+assert.equal(druddigonB2b.hp,100);
+assert.equal(druddigonB2b.attacks[0].jpName,'わしづかみ');
+assert.equal(druddigonB2b.attacks[0].jpText,'次の相手の番、このワザを受けたポケモンはにげるができない。');
+
 const darkraiEx=makeCard();
 apply(darkraiEx,{
   name:'Darkrai ex',category:'Pokemon',type:'Darkness',stage:'Basic',evolvesFrom:'',hp:140,
