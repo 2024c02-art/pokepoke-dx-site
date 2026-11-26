@@ -21,7 +21,11 @@ const sourceChecks = [
   'Object.entries(savedCollection)',
   'Defer gameplay/ownership validation',
   'Object.entries(imp.collection)',
-  'validDeckShape'
+  'validDeckShape',
+  'poolLimit: 72',
+  "filtered.slice(0, this.viewMode === 'dex' ? this.dexLimit : this.poolLimit)",
+  'showMoreBuild()',
+  'searchCards()'
 ];
 for (const marker of sourceChecks) assert.ok(html.includes(marker), 'missing fix: ' + marker);
 console.log('All deck ownership/reprint regression checks passed.');
