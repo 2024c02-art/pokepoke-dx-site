@@ -8752,7 +8752,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         if (c.category === 'Trainer') {
           if(Number(this.p.trainerBlockedUntilTurn||0)>=this.turn) return false;
-          if(c.subType==='Item'&&Number(this.p.itemBlockedUntilTurn||0)>=this.turn) return false;
+          if(c.subType!=='Supporter'&&Number(this.p.itemBlockedUntilTurn||0)>=this.turn) return false;
           return c.subType === 'Supporter' ? this.canUseSupporter('player') : true;
         }
         return false;
@@ -8925,7 +8925,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if(side==='player')ui.toast('ワザの効果で、次の番までトレーナーズを使えません');
           return;
         }
-        if(c.category==='Trainer' && c.subType==='Item' && Number(s.itemBlockedUntilTurn||0)>=this.turn){
+        if(c.category==='Trainer' && c.subType!=='Supporter' && Number(s.itemBlockedUntilTurn||0)>=this.turn){
           if(side==='player')ui.toast('ワザの効果で、次の番までアイテムを使えません');
           return;
         }

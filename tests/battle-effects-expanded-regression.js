@@ -63,6 +63,11 @@ assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfPoke
 attacker.attackDamagePenalty=20;attacker.attackDamagePenaltyUntilTurn=3;
 assert.equal(calc.call(engine,attacker,baseAttack,def,'player').final,30,'temporary outgoing attack damage reduction');
 assert.match(html,/opponentItemLockNextTurn/);
+assert.match(html,/c\.subType!=='Supporter' && Number\(s\.itemBlockedUntilTurn\|\|0\)>=this\.turn/);
+assert.match(html,/c\.subType!=='Supporter'&&Number\(this\.p\.itemBlockedUntilTurn\|\|0\)>=this\.turn/);
+assert.match(html,/itemBlockedUntilTurn: Number\(this\.p\.itemBlockedUntilTurn\|\|0\)/);
+assert.match(html,/trainerBlockedUntilTurn: Number\(this\.p\.trainerBlockedUntilTurn\|\|0\)/);
+assert.match(html,/attackDamagePenaltyUntilTurn/);
 assert.match(html,/opponentTrainerLockNextTurn/);
 assert.match(html,/attackFailureOnTailsUntilTurn/);
 assert.match(html,/lastKOByOpponentAttack/);
