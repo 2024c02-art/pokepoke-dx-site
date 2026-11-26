@@ -33,6 +33,8 @@ const cases=[
 ["During your next turn, this Pokémon can't use Frenzy Plant.","selfCannotUseAttackNextTurn","Frenzy Plant"]
 ];
 for(const [text,key,expected] of cases){const parsed=parse.call(ctx,text);assert.ok(parsed,'unparsed effect: '+text);assert.equal(parsed[key],expected,'wrong parsed value: '+text);}
+const psychicDiscardEffect=parse.call(ctx,"This attack does 20 more damage for each [P] Pokémon in your discard pile.");
+assert.equal(psychicDiscardEffect.discardedPokemonType,'Psychic','discarded Pokemon type');
 
 const calcStart=html.indexOf('calcDamagePreview(attInst, atk, defInst, side) {');
 const calcEnd=html.indexOf('\n      resolveMoltresAbility',calcStart);
