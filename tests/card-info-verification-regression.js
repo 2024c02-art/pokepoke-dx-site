@@ -71,6 +71,7 @@ assert.ok(mismatch.dataVerificationIssues.includes('HP'));
 
 assert.match(html,/ui\.openCardModal=function\(card/);
 assert.match(html,/CARD_DATA_SUPPLEMENT\.loadSet\(code,false\)/);
-assert.match(html,/カードの基本情報・ワザ・特性を収録番号単位で照合済み/);
+assert.match(html,/ui\.closeCardModal=function\(\)\{cardDetailLoadRequest\+\+;/);
+assert.match(html,/カードの基本情報・ワザ・特性を参照データと収録番号単位で照合済み/);
 assert.match(html,/対戦シミュレーターの効果処理が未対応/);
 console.log('All card-information verification regression checks passed.');

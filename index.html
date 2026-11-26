@@ -2333,7 +2333,7 @@
             </div>
             <div class="bg-white/94 rounded-2xl p-2.5 space-y-2 text-slate-800 z-10">
               ${card.collectionOnly ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-2 text-[10px] font-bold text-amber-900">このカードは対戦シミュレーターの効果処理が未対応のため、対戦デッキには入れられません。${card.rarityEstimated ? ' レアリティは未確認のため暫定表示です。' : ''}</div>` : '' }
-              ${card.dataVerified === true ? `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-[10px] font-bold text-emerald-900">カードの基本情報・ワザ・特性を収録番号単位で照合済み</div>` : `<div class="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[10px] font-bold text-amber-900">カード情報は未照合です。${card.dataVerificationIssues?.length ? '確認項目: '+escapeHtml(card.dataVerificationIssues.join('、')) : ''}</div>`}
+              ${card.dataVerified === true ? `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-[10px] font-bold text-emerald-900">カードの基本情報・ワザ・特性を参照データと収録番号単位で照合済み（公式保証ではありません）</div>` : `<div class="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[10px] font-bold text-amber-900">カード情報は未照合です。${card.dataVerificationIssues?.length ? '確認項目: '+escapeHtml(card.dataVerificationIssues.join('、')) : ''}</div>`}
               ${displayAbility ? `<div class="bg-rose-50 border border-rose-200 rounded-xl p-2"><div class="text-[11px] font-black text-rose-700">特性: ${escapeHtml(displayAbility.name)}</div>${displayAbility.text ? `<p class="text-[10px] leading-snug mt-0.5">${escapeHtml(displayAbility.text)}</p>` : ''}</div>` : ''}
               ${card.attacks ? card.attacks.map((atk, idx) => {
                 const prev = dmgPreviewList && dmgPreviewList[idx];
@@ -7153,7 +7153,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
     // Load one exact set on demand when a card detail is opened; do not fetch the whole catalogue at startup.
     const openCardModalWithoutLoad=ui.openCardModal.bind(ui);
+    const closeCardModalWithoutLoad=ui.closeCardModal.bind(ui);
     let cardDetailLoadRequest=0;
+    ui.closeCardModal=function(){cardDetailLoadRequest++;return closeCardModalWithoutLoad.apply(this,arguments);};
     ui.openCardModal=function(card,actionsHtml='',dmgPreviewList=null,fieldStatusHtml=''){
       if(!card) return;
       const request=++cardDetailLoadRequest;
