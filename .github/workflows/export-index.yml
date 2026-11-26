@@ -1,0 +1,32 @@
+name: Temporary index export
+on:
+  push:
+    paths:
+      - ".github/workflows/export-index.yml"
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Split index.html into retrievable chunks
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const data = fs.readFileSync('index.html');
+          const dir = '/tmp/index-export';
+          fs.mkdirSync(dir, {recursive:true});
+          const size = 350000;
+          for(let i=0;i<data.length;i+=size){
+            const n=String(Math.floor(i/size)).padStart(2,'0');
+            fs.writeFileSync(path.join(dir, 'index-'+n+'.part'), data.subarray(i, Math.min(i+size,data.length)));
+          }
+          fs.writeFileSync(path.join(dir,'meta.txt'), 'bytes='+data.length+' parts='+Math.ceil(data.length/size));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: temporary-index-export
+          path: /tmp/index-export/
+          retention-days: 1
