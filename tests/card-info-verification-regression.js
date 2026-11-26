@@ -16,7 +16,7 @@ apply(druddigonA1a,{
   text:'',ex:false,points:1
 },{nameJa:'クリムガン',hp:100,typeJa:'竜',stageJa:'たね',retreatCost:2,abilities:[{name:'さめはだ',effect:'このポケモンが、バトル場で相手のポケモンからワザのダメージを受けたとき、ワザを使ったポケモンに20ダメージ。'}],attacks:[{name:'ドラゴンクロー',damage:'90',effect:''}]},[
   {name:'Dragon Claw',damage:90,damageLabel:'90',cost:['Fire','Water','Colorless'],text:'',genericEffect:null,unsupportedEffect:false}
-],{name:'Rough Skin',text:"If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon."},'');
+],{name:'Rough Skin',text:"If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon, do 20 damage to the Attacking Pokémon."},'');
 assert.equal(druddigonA1a.dataVerified,true);
 assert.equal(druddigonA1a.hp,100);
 assert.equal(druddigonA1a.attacks[0].jpName,'ドラゴンクロー');

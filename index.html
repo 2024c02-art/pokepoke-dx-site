@@ -2333,7 +2333,9 @@
             </div>
             <div class="bg-white/94 rounded-2xl p-2.5 space-y-2 text-slate-800 z-10">
               ${card.collectionOnly ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-2 text-[10px] font-bold text-amber-900">このカードは対戦シミュレーターの効果処理が未対応のため、対戦デッキには入れられません。${card.rarityEstimated ? ' レアリティは未確認のため暫定表示です。' : ''}</div>` : '' }
-              ${card.dataVerified === true ? `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-[10px] font-bold text-emerald-900">カードの基本情報・ワザ・特性を参照データと収録番号単位で照合済み（公式保証ではありません）</div>` : `<div class="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[10px] font-bold text-amber-900">カード情報は未照合です。${card.dataVerificationIssues?.length ? '確認項目: '+escapeHtml(card.dataVerificationIssues.join('、')) : ''}</div>`}
+              ${card.dataVerified === true ? `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-[10px] font-bold text-emerald-900">カードの基本情報・ワザ・特性を参照データと収録番号単位で照合済み（非公式データ）</div>` : `<div class="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[10px] font-bold text-amber-900">カード情報は未照合です。${card.dataVerificationIssues?.length ? '確認項目: '+escapeHtml(card.dataVerificationIssues.join('、')) : ''}</div>`}
+              ${card.dataVerified === true && card.dataVerificationCoverage?.length ? `<div class="text-[9px] text-slate-500">${escapeHtml(card.dataVerificationCoverage.join('。'))}。ゲーム効果データは参照元の内容を使用しています。</div>` : ''}
+              ${card.japaneseEffectDataVerified === true ? `<div class="text-[9px] text-emerald-700">日本語の特性・効果文も参照データとの数値・有無を照合済み</div>` : ''}
               ${displayAbility ? `<div class="bg-rose-50 border border-rose-200 rounded-xl p-2"><div class="text-[11px] font-black text-rose-700">特性: ${escapeHtml(displayAbility.name)}</div>${displayAbility.text ? `<p class="text-[10px] leading-snug mt-0.5">${escapeHtml(displayAbility.text)}</p>` : ''}</div>` : ''}
               ${card.attacks ? card.attacks.map((atk, idx) => {
                 const prev = dmgPreviewList && dmgPreviewList[idx];
@@ -6747,43 +6749,96 @@ const PACK_CATALOG_DATA = {
       const jp=japaneseDetail||{};
       const jpTypeMap={'草':'Grass','炎':'Fire','水':'Water','雷':'Lightning','超':'Psychic','闘':'Fighting','悪':'Darkness','鋼':'Metal','無':'Colorless','竜':'Dragon','ドラゴン':'Dragon'};
       const jpStageMap={'たね':'Basic','1進化':'Stage1','2進化':'Stage2'};
-      const conflicts=[], missing=[];
+      const jpEnergyMap={'草':'Grass','炎':'Fire','水':'Water','雷':'Lightning','超':'Psychic','闘':'Fighting','悪':'Darkness','鋼':'Metal','無':'Colorless','竜':'Dragon','ドラゴン':'Dragon'};
+      const conflicts=[], missing=[], coverage=[];
       const compare=(label,a,b)=>{if(a!==undefined&&a!==null&&a!==''&&b!==undefined&&b!==null&&b!==''&&String(a)!==String(b))conflicts.push(label);};
+      const normalText=value=>String(value??'').normalize('NFKC').replace(/[\s\u3000]+/g,' ').trim();
+      const effectNumbers=value=>normalText(value).replace(/\b(one|once)\b/gi,'1').replace(/\b(two|twice)\b/gi,'2').replace(/\b(three)\b/gi,'3').replace(/\b(four)\b/gi,'4').match(/\d+/g)||[];
+      const compareEffectNumbers=(label,japanese,english)=>{
+        const jpText=normalText(japanese), enText=normalText(english);
+        if(!jpText||!enText) return;
+        const jpNumbers=effectNumbers(jpText), enNumbers=effectNumbers(enText);
+        if(jpNumbers.join(',')!==enNumbers.join(',')) conflicts.push(label+'効果量');
+      };
+      const normalizedDamage=value=>normalText(value).replace(/[×✕]/g,'x').replace(/\s+/g,'').toLowerCase();
+      const compareCosts=(label,japaneseCost,sourceCost)=>{
+        if(!japaneseCost||typeof japaneseCost!=='object'||Array.isArray(japaneseCost)||!Object.keys(japaneseCost).length||!Array.isArray(sourceCost)) return;
+        const jpList=[];
+        Object.entries(japaneseCost).forEach(([type,count])=>{
+          const mapped=jpEnergyMap[type]||type;
+          for(let n=0;n<Math.max(0,Number(count)||0);n++) jpList.push(mapped);
+        });
+        const sourceList=sourceCost.map(String);
+        jpList.sort(); sourceList.sort();
+        if(jpList.join('|')!==sourceList.join('|')) conflicts.push(label+'エネルギー');
+      };
       compare('HP',jp.hp,enDetail.hp);
       compare('にげる',jp.retreatCost,enDetail.retreat);
       if(jp.stageJa&&jpStageMap[jp.stageJa]&&enDetail.stage) compare('進化段階',jpStageMap[jp.stageJa],enDetail.stage);
       if(jp.typeJa&&jpTypeMap[jp.typeJa]&&enDetail.type) compare('タイプ',jpTypeMap[jp.typeJa],enDetail.type);
-      if(Array.isArray(jp.attacks)&&jp.attacks.length&&Array.isArray(sourceAttacks)){
-        if(jp.attacks.length!==sourceAttacks.length) conflicts.push('ワザ数');
-        jp.attacks.forEach((a,i)=>{
-          const source=sourceAttacks[i];
-          if(a?.damage!=null&&source?.damageLabel!=null&&String(a.damage)!==String(source.damageLabel)) conflicts.push('ワザダメージ'+(i+1));
-        });
-      }
+      if(jp.weaknessText&&jpTypeMap[jp.weaknessText]&&enDetail.weakness) compare('弱点',jpTypeMap[jp.weaknessText],enDetail.weakness);
+      const sourceAttackList=Array.isArray(sourceAttacks)?sourceAttacks:[];
       const jpAttacks=Array.isArray(jp.attacks)?jp.attacks:[];
+      const hasJapaneseAttackList=Array.isArray(jp.attacks)&&jpAttacks.length>0;
+      const canCheckJapaneseEffects=jp.cardEffectAvailable===true;
+      if(hasJapaneseAttackList||canCheckJapaneseEffects){
+        if(jpAttacks.length!==sourceAttackList.length) conflicts.push('ワザ数');
+        jpAttacks.forEach((a,i)=>{
+          const source=sourceAttackList[i];
+          if(!source){conflicts.push('ワザ'+(i+1));return;}
+          if(!hasJapaneseText(a?.name)) missing.push('ワザ名'+(i+1));
+          if(a?.damage!=null&&source?.damageLabel!=null&&normalizedDamage(a.damage)!==normalizedDamage(source.damageLabel)) conflicts.push('ワザダメージ'+(i+1));
+          compareCosts('ワザ'+(i+1),a?.cost,source?.cost);
+          const jpEffect=normalText(a?.effect||'');
+          const sourceEffect=normalText(source?.text||'');
+          if((jpEffect&&!sourceEffect)||(canCheckJapaneseEffects&&!!jpEffect!==!!sourceEffect)) conflicts.push('ワザ効果有無'+(i+1));
+          if(jpEffect&&sourceEffect) compareEffectNumbers('ワザ'+(i+1),jpEffect,sourceEffect);
+        });
+      }else if(enDetail.category==='Pokemon'&&sourceAttackList.length){
+        coverage.push('日本語ワザ詳細は一部未収録');
+      }
+      const jpAbilities=Array.isArray(jp.abilities)?jp.abilities:[];
+      const jaAbility=jpAbilities[0]||null;
+      const jaAbilityName=typeof jaAbility==='string'?jaAbility:(jaAbility?.name||'');
+      const jaAbilityText=jaAbility&&typeof jaAbility==='object'?(jaAbility.effect||jaAbility.text||''):'';
+      if(jpAbilities.length>0&&!sourceAbility) conflicts.push('特性有無');
+      if(canCheckJapaneseEffects){
+        if(jpAbilities.length!==(sourceAbility?1:0)) conflicts.push('特性数');
+        if(sourceAbility&&jpAbilities.length){
+          if(!hasJapaneseText(jaAbilityName)) missing.push('特性名');
+          if(!normalText(jaAbilityText)) conflicts.push('特性効果文');
+        }
+      }else if(sourceAbility&&!jpAbilities.length){
+        coverage.push('日本語特性情報は一部未収録');
+      }
+      if(sourceAbility&&normalText(jaAbilityText)) compareEffectNumbers('特性',jaAbilityText,sourceAbility.text);
+      const jpCardText=normalText(jp.cardEffectText||'');
+      const englishCardText=normalText(sourceText||'');
+      if(enDetail.category==='Trainer'&&canCheckJapaneseEffects){
+        if((jpCardText&&!englishCardText)||(canCheckJapaneseEffects&&!!jpCardText!==!!englishCardText)) conflicts.push('トレーナーズ効果有無');
+        if(jpCardText&&englishCardText) compareEffectNumbers('トレーナーズ',jpCardText,englishCardText);
+      }else if(enDetail.category==='Trainer'&&!jpCardText){
+        coverage.push('日本語カード効果文は未収録');
+      }
       card.category=enDetail.category||card.category;
-      card.type=jpTypeMap[jp.typeJa]||(enDetail.category==='Pokemon'?enDetail.type:card.type)||'Colorless';
-      card.stage=jpStageMap[jp.stageJa]||enDetail.stage||card.stage||null;
+      card.type=(enDetail.category==='Pokemon'?enDetail.type:card.type)||'Colorless';
+      card.stage=enDetail.stage||card.stage||null;
       card.evolvesFrom=enDetail.evolvesFrom||null;
-      card.hp=jp.hp!=null?Number(jp.hp):(Number(enDetail.hp)||card.hp||null);
+      card.hp=Number(enDetail.hp)||card.hp||null;
       card.weakness=enDetail.weakness||card.weakness||'None';
-      card.retreat=jp.retreatCost!=null?Number(jp.retreatCost):(enDetail.retreat!=null?Number(enDetail.retreat):(card.retreat??0));
-      card.attacks=(Array.isArray(sourceAttacks)?sourceAttacks:[]).map((attack,index)=>{
+      card.retreat=enDetail.retreat!=null?Number(enDetail.retreat):(card.retreat??0);
+      card.attacks=sourceAttackList.map((attack,index)=>{
         const ja=jpAttacks[index]||{};
         return {...attack,jpName:hasJapaneseText(ja.name)?ja.name:'',jpText:hasJapaneseText(ja.effect)?ja.effect:''};
       });
-      const jaAbility=Array.isArray(jp.abilities)?jp.abilities[0]:null;
-      const jaAbilityName=typeof jaAbility==='string'?jaAbility:(jaAbility?.name||'');
-      const jaAbilityText=typeof jaAbility==='object'?(jaAbility.effect||jaAbility.text||''):'';
       card.ability=sourceAbility?{...sourceAbility,jpName:hasJapaneseText(jaAbilityName)?jaAbilityName:'',jpText:hasJapaneseText(jaAbilityText)?jaAbilityText:''}:null;
-      const jaCardText=jp.cardEffectText||'';
-      card.text=hasJapaneseText(jaCardText)?jaCardText:String(sourceText||'');
+      card.text=hasJapaneseText(jp.cardEffectText)?jp.cardEffectText:String(sourceText||'');
       card.isEx=!!enDetail.ex;
       card.pointValue=Number(enDetail.points)||(card.isEx?2:1);
       card.sourceNameEN=enDetail.name;
       card.enDetail={...(card.enDetail||{}),...enDetail};
-      const attacksComplete=Array.isArray(sourceAttacks)&&sourceAttacks.every(a=>a&&String(a.name||'').trim()&&String(a.damageLabel??'').trim()!==''&&Array.isArray(a.cost));
-      const abilityComplete=!sourceAbility||(String(sourceAbility.name||'').trim()&&typeof sourceAbility.text==='string');
+      const attacksComplete=sourceAttackList.length>0&&sourceAttackList.every(a=>a&&String(a.name||'').trim()&&Array.isArray(a.cost)&&(a.damage!=null||String(a.text||'').trim()));
+      const abilityComplete=!sourceAbility||(String(sourceAbility.name||'').trim()&&typeof sourceAbility.text==='string'&&String(sourceAbility.text).trim());
       if(enDetail.category==='Pokemon'){
         if(!enDetail.type) missing.push('type');
         if(!card.stage) missing.push('stage');
@@ -6795,8 +6850,12 @@ const PACK_CATALOG_DATA = {
       }else if(enDetail.category==='Trainer'){
         if(!String(sourceText||'').trim()) missing.push('trainer text');
       }else missing.push('category');
+      if(japaneseDetail&&jp.cardEffectAvailable!==true) coverage.push('日本語効果文は参照データに未登録の項目あり');
+      if(!japaneseDetail) coverage.push('日本語カード詳細は未収録');
       card.dataVerificationIssues=[...new Set([...missing,...conflicts])];
       card.dataVerified=card.dataVerificationIssues.length===0;
+      card.dataVerificationCoverage=[...new Set(coverage)];
+      card.japaneseEffectDataVerified=canCheckJapaneseEffects&&conflicts.length===0&&missing.length===0;
       card.dataSourceLabel='PocketDecks Pokémon TCG Pocket Cards v5 (community dataset)';
       card.detailStatus=japaneseDetail?'available':'available-en';
       return card.dataVerified;
