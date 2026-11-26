@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ポケポケDX v47 追加ワザ効果対応拡張版 | ぽきもんかーどばとる</title>
+  <title>ポケポケDX v51 ワザ対象・状態条件拡張版 | ぽきもんかーどばとる</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
@@ -6636,6 +6636,9 @@ const PACK_CATALOG_DATA = {
       parseGenericEffect(text) {
         const t=String(text||'').trim().replace(/[.!。]$/,''); if(!t) return null;
         let m;
+        if((m=t.match(/^This attack (?:also )?does (\d+) damage to 1 of your opponent's (?:Pokémon|Pokemon)(?: that (?:has damage on it|have damage on them))?$/i))) return {opponentPokemonDamage:Number(m[1]),opponentPokemonDamageRequiresDamage:/that (?:has damage on it|have damage on them)/i.test(t)};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is (Poisoned|Burned), this attack does (\d+) more damage$/i))) return {bonusIfOpponentStatus:m[1].toLowerCase(),bonusIfOpponentStatusDamage:Number(m[2])};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is affected by a Special Condition, this attack does (\d+) more damage$/i))) return {bonusIfOpponentSpecialCondition:Number(m[1])};
         if((m=t.match(/^This (?:Pokémon|Pokemon) also takes (\d+) damage$/i))) return {selfDamage:Number(m[1])};
         if((m=t.match(/^This (?:Pokémon|Pokemon) also does (\d+) damage to itself$/i))) return {selfDamage:Number(m[1])};
         if((m=t.match(/^Heal (\d+) damage from this (?:Pokémon|Pokemon)$/i))) return {selfHeal:Number(m[1])};
@@ -6701,6 +6704,16 @@ const PACK_CATALOG_DATA = {
         if(statusMatch){const statuses=readStatuses(statusMatch[1]);if(statuses)return {selfStatuses:statuses};}
         statusMatch=t.match(/^Both Active (?:Pokémon|Pokemon) are now (.+)$/i);
         if(statusMatch){const statuses=readStatuses(statusMatch[1]);if(statuses)return {bothActiveStatuses:statuses};}
+        let combinedCoinStatus=t.match(/^Flip (\d+) coins?\. This attack does (\d+) damage for each heads\. If at least (\d+) of them are heads, your opponent's Active (?:Pokémon|Pokemon) is now (.+)$/i);
+        if(combinedCoinStatus){
+          const statuses=readStatuses(combinedCoinStatus[4]);
+          if(statuses)return {coinCount:Number(combinedCoinStatus[1]),coinDamagePerHeads:Number(combinedCoinStatus[2]),opponentStatusesIfAtLeastHeads:{count:Number(combinedCoinStatus[3]),statuses}};
+        }
+        combinedCoinStatus=t.match(/^Flip a coin\. If tails, this attack does nothing\. If heads, your opponent's Active (?:Pokémon|Pokemon) is now (.+)$/i);
+        if(combinedCoinStatus){
+          const statuses=readStatuses(combinedCoinStatus[1]);
+          if(statuses)return {coinCount:1,coinFailDamageZero:true,opponentStatusesIfHeads:statuses};
+        }
         return null;
       },
       attacksFrom(game) {
@@ -8758,6 +8771,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(atk.genericEffect?.bonusPerOpponentBenchPokemon) dmg += Number(atk.genericEffect.bonusPerOpponentBenchPokemon||0)*opp.bench.length;
         if(atk.genericEffect?.bonusIfSelfDamaged && attInst.hp < attInst.maxHp) dmg += Number(atk.genericEffect.bonusIfSelfDamaged||0);
         if(atk.genericEffect?.bonusIfOpponentDamaged && defInst.hp < defInst.maxHp) dmg += Number(atk.genericEffect.bonusIfOpponentDamaged||0);
+        const defenderStatuses=[...(Array.isArray(defInst.statusEffects)?defInst.statusEffects:[]),...(defInst.status?[defInst.status]:[])];
+        if(atk.genericEffect?.bonusIfOpponentStatus && defenderStatuses.includes(String(atk.genericEffect.bonusIfOpponentStatus).replace(/^./,c=>c.toUpperCase()))) dmg += Number(atk.genericEffect.bonusIfOpponentStatusDamage||0);
+        if(atk.genericEffect?.bonusIfOpponentSpecialCondition && defenderStatuses.length) dmg += Number(atk.genericEffect.bonusIfOpponentSpecialCondition||0);
         if(atk.genericEffect?.bonusSelfDamage) dmg += Math.max(0,attInst.maxHp-attInst.hp);
         if(atk.genericEffect?.bonusPerUniqueEnergyType) dmg += Number(atk.genericEffect.bonusPerUniqueEnergyType||0)*new Set(attInst.energies).size;
         if(atk.genericEffect?.damageEachOpponent) dmg += Number(atk.genericEffect.damageEachOpponent||0);
@@ -8937,13 +8953,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return wasKO;
       },
 
-      resolveAttackChoice(benchIdx) {
+      resolveAttackChoice(target, targetIndex = null) {
         const pend = this.pendingAttackChoice;
         if (!pend || pend.session !== this.sessionId) return;
         this.pendingAttackChoice = null;
         this.actionLocked = false;
         this.render();
-        this.attack(pend.side, pend.atkIdx, pend.copiedAttackIdx, { bench: benchIdx });
+        const choice = target==='active'||target==='bench'
+          ? { targetZone:target, targetIndex:Math.max(0,Number(targetIndex)||0) }
+          : { bench:Number(target) };
+        this.attack(pend.side, pend.atkIdx, pend.copiedAttackIdx, choice);
       },
 
       resolveGenomeHack(side, atkIdx, copiedAttackIdx) {
@@ -9028,11 +9047,33 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if (!atk || atk.fx === 'genome') return;
         }
 
-        // Attacks that need a bench target: the player picks it, the CPU chooses automatically.
+        // Single-target and bench-target attacks: the player chooses the target; CPU prefers a likely KO.
         const genericBenchDamage=Number(atk.genericEffect?.benchDamage||0);
+        const genericOpponentPokemonDamage=Number(atk.genericEffect?.opponentPokemonDamage||0);
         const genericBenchAllDamage=Number(atk.genericEffect?.benchAllDamage||0);
-        const pickKind = (atk.fx === 'bench_snipe30' || genericBenchDamage>0) ? 'oppBench' : (atk.fx === 'metal_turbo' || atk.genericEffect?.switchSelf) ? 'ownBench' : null;
-        if (pickKind && !choice) {
+        const pickKind = genericOpponentPokemonDamage>0 ? 'oppPokemon' : (atk.fx === 'bench_snipe30' || genericBenchDamage>0) ? 'oppBench' : (atk.fx === 'metal_turbo' || atk.genericEffect?.switchSelf) ? 'ownBench' : null;
+        if(pickKind==='oppPokemon'&&!choice){
+          const requiresDamage=!!atk.genericEffect?.opponentPokemonDamageRequiresDamage;
+          const targets=[...(opp.active?[{z:'active',i:0,inst:opp.active}]:[]),...opp.bench.map((inst,i)=>({z:'bench',i,inst}))].filter(t=>!requiresDamage||t.inst.hp<t.inst.maxHp);
+          if(!targets.length) choice={targetZone:null,targetIndex:-1};
+          else if(targets.length===1) choice={targetZone:targets[0].z,targetIndex:targets[0].i};
+          else if(side==='player'){
+            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx};
+            this.actionLocked=true;
+            const html=targets.map(t=>`<div onclick="battle.resolveAttackChoice('${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${t.inst.hp}/${t.inst.maxHp}・エネ${t.inst.energies.length}</span><span class="text-[10px] text-slate-500">${t.z==='active'?'バトル場':'ベンチ'}</span></div>`).join('');
+            this.render();
+            const attackLabel=getCardDisplayAttackName(CARD_MAP[s.active.cardId],atk,isGenomeHack?copiedAttackIdx:atkIdx);
+            ui.openSelectModal(`${attackLabel}：${genericOpponentPokemonDamage}ダメージを与える相手のポケモンを選択`,html,true);
+            return;
+          }else{
+            const target=targets.reduce((best,t)=>{
+              const score=(t.inst.hp<=genericOpponentPokemonDamage?1000:0)-t.inst.hp+(t.z==='active'?5:0);
+              return !best||score>best.score?{...t,score}:best;
+            },null);
+            choice={targetZone:target.z,targetIndex:target.i};
+          }
+        }
+        if(pickKind&&pickKind!=='oppPokemon'&&!choice){
           const list = pickKind === 'oppBench' ? opp.bench : s.bench;
           if (list.length === 0) choice = { bench: -1 };
           else if (list.length === 1) choice = { bench: 0 };
@@ -9055,7 +9096,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         const coinEffect=atk.genericEffect||{};
         let coinHeads=0, coinRolls=0;
-        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy||coinEffect.coinDiscardOpponentRandomEnergyPerHeads||coinEffect.coinUntilTails||coinEffect.selfDamageOnTails||coinEffect.coinAllHeadsBonus||coinEffect.coinPerPokemon||coinEffect.opponentStatusesIfHeads){
+        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy||coinEffect.coinDiscardOpponentRandomEnergyPerHeads||coinEffect.coinUntilTails||coinEffect.selfDamageOnTails||coinEffect.coinAllHeadsBonus||coinEffect.coinPerPokemon||coinEffect.opponentStatusesIfHeads||coinEffect.opponentStatusesIfAtLeastHeads){
           const coinCount=coinEffect.coinPerPokemon?Math.max(1,Math.min(4,(s.active?1:0)+s.bench.length)):Math.max(1,Math.min(4,Number(coinEffect.coinCount)||1));
           if(coinEffect.coinUntilTails){
             let tails=false;
@@ -9117,11 +9158,24 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         prev.isWeak ? sound.superEffective() : sound.attack();
 
         const defendingCardName = getCardDisplayName(CARD_MAP[opp.active.cardId]);
-        opp.active.hp -= dmg;
-        this.showDmg(side === 'player' ? 'opp-active' : 'player-active', dmg, prev.isWeak);
-        this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に${dmg}ダメージ！${prev.isWeak ? '（弱点+20！）' : ''}`);
+        if(dmg>0){
+          opp.active.hp -= dmg;
+          this.showDmg(side === 'player' ? 'opp-active' : 'player-active', dmg, prev.isWeak);
+          this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に${dmg}ダメージ！${prev.isWeak ? '（弱点+20！）' : ''}`);
+        }else if(!(ge.opponentPokemonDamage>0)){
+          this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に0ダメージ！`);
+        }
+        if(ge.opponentPokemonDamage>0&&choice?.targetZone){
+          const target=choice.targetZone==='active'?opp.active:opp.bench[choice.targetIndex];
+          if(target){
+            target.hp-=Number(ge.opponentPokemonDamage);
+            if(choice.targetZone==='active') this.showDmg(side==='player'?'opp-active':'player-active',Number(ge.opponentPokemonDamage),false);
+            this.log(`ワザ効果！${getCardDisplayName(CARD_MAP[target.cardId])}に${Number(ge.opponentPokemonDamage)}ダメージ！`);
+          }
+        }
         if(opp.active&&ge.opponentStatuses) ge.opponentStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(opp.active&&ge.opponentStatusesIfHeads&&coinHeads>0) ge.opponentStatusesIfHeads.forEach(status=>this.applySpecialCondition(opp.active,status));
+        if(opp.active&&ge.opponentStatusesIfAtLeastHeads&&coinHeads>=Number(ge.opponentStatusesIfAtLeastHeads.count||1)) ge.opponentStatusesIfAtLeastHeads.statuses.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(s.active&&ge.selfStatuses) ge.selfStatuses.forEach(status=>this.applySpecialCondition(s.active,status));
         if(ge.bothActiveStatuses){
           if(s.active) ge.bothActiveStatuses.forEach(status=>this.applySpecialCondition(s.active,status));
