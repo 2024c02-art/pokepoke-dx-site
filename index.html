@@ -6944,6 +6944,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^Flip (\d+) coins?\. If both of them are heads, this attack does (\d+) more damage$/i))) return {coinCount:Number(m[1]),coinAllHeadsBonus:Number(m[2])};
         if((m=t.match(/^Flip a coin for each (?:Pokémon|Pokemon) you have in play\. This attack does (\d+) damage for each heads$/i))) return {coinPerPokemon:true,coinDamagePerHeads:Number(m[1])};
         if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon do [−–-](\d+) damage$/i))) return {defendingAttackDamageReductionNextTurn:Number(m[1])};
+        if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon cost (\d+) more, and its Retreat Cost is (\d+) more$/i))) return {defendingAttackCostIncreaseNextTurn:Number(m[1]),defendingRetreatCostIncreaseNextTurn:Number(m[2])};
         if(/^During your opponent's next turn, the Defending Pokémon can't attack$/i.test(t)) return {defendingCannotAttackNextTurn:true};
         if(/^If the Defending Pokémon is a Basic Pokémon, it can't attack during your opponent's next turn$/i.test(t)) return {defendingCannotAttackNextTurnIfBasic:true};
         if(/^During your opponent's next turn, if the Defending Pokémon tries to use an attack, your opponent flips a coin\. If tails, that attack doesn't happen$/i.test(t)) return {defendingAttackFailureOnTailsNextTurn:true};
@@ -8117,7 +8118,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       createInst(cardId, turnPlayed = 0) {
         const b = CARD_MAP[cardId];
-        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, attackNameBlockUntilTurn: 0, blockedAttackNames: [], under: [] };
+        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, attackNameBlockUntilTurn: 0, attackCostIncrease: 0, attackCostIncreaseUntilTurn: 0, retreatCostIncrease: 0, retreatCostIncreaseUntilTurn: 0, blockedAttackNames: [], under: [] };
       },
 
       pickRandomEnergy(types) {
@@ -8259,7 +8260,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const statusEffects=[...new Set(rawStatusEffects)];
         const statusUntilTurn=Number(inst.statusUntilTurn||0);
         if(!Number.isInteger(statusUntilTurn)||statusUntilTurn<0||statusUntilTurn>100000) return null;
-        const effectTurnFields=['preventAttackDamageUntilTurn','attackDamageReductionUntilTurn','attackDamagePenaltyUntilTurn','attackFailureOnTailsUntilTurn','retreatBlockedUntilTurn','attackBlockedUntilTurn','attackNameBlockUntilTurn'];
+        const effectTurnFields=['preventAttackDamageUntilTurn','attackDamageReductionUntilTurn','attackDamagePenaltyUntilTurn','attackFailureOnTailsUntilTurn','retreatBlockedUntilTurn','attackBlockedUntilTurn','attackNameBlockUntilTurn','attackCostIncreaseUntilTurn','retreatCostIncreaseUntilTurn'];
         const effectTurns={};
         for(const key of effectTurnFields){const value=Number(inst[key]||0);if(!Number.isInteger(value)||value<0||value>100000)return null;effectTurns[key]=value;}
         const attackDamageReduction=Number(inst.attackDamageReduction||0);
@@ -8271,7 +8272,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return {
           cardId: inst.cardId, hp: Math.floor(hp), maxHp: Math.floor(maxHp),
           energies: [...inst.energies], turnPlayed,
-          abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, ...effectTurns, attackDamageReduction, attackDamagePenalty, blockedAttackNames:[...blockedAttackNames], under: [...under]
+          abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, ...effectTurns, attackDamageReduction, attackDamagePenalty, attackCostIncrease:Math.max(0,Math.min(5,Number(inst.attackCostIncrease||0))), retreatCostIncrease:Math.max(0,Math.min(5,Number(inst.retreatCostIncrease||0))), blockedAttackNames:[...blockedAttackNames], under: [...under]
         };
       },
 
@@ -9212,10 +9213,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       canPay(inst, cost) {
         const pool = [...inst.energies];
-        for (const r of cost.filter(x => x !== 'Colorless')) {
+        const extraCost=Number(inst.attackCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.attackCostIncrease||0)):0;
+        const required=[...cost,...Array(extraCost).fill('Colorless')];
+        for (const r of required.filter(x => x !== 'Colorless')) {
           const i = pool.indexOf(r); if (i === -1) return false; pool.splice(i, 1);
         }
-        return pool.length >= cost.filter(x => x === 'Colorless').length;
+        return pool.length >= required.filter(x => x === 'Colorless').length;
       },
 
       energyEffectType(code) { return ({G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal',C:'Colorless'})[String(code||'').toUpperCase()]||null; },
@@ -9728,6 +9731,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           opp.active.attackBlockedUntilTurn=this.turn+1;
           this.log('相手のたねポケモンは次の相手の番、ワザを使えない！');
         }
+        if(!opponentActiveProtected&&ge.defendingAttackCostIncreaseNextTurn>0){
+          opp.active.attackCostIncrease=Number(ge.defendingAttackCostIncreaseNextTurn);
+          opp.active.attackCostIncreaseUntilTurn=this.turn+1;
+          this.log(`相手の次の番、このポケモンのワザにエネルギー${opp.active.attackCostIncrease}個分追加！`);
+        }
+        if(!opponentActiveProtected&&ge.defendingRetreatCostIncreaseNextTurn>0){
+          opp.active.retreatCostIncrease=Number(ge.defendingRetreatCostIncreaseNextTurn);
+          opp.active.retreatCostIncreaseUntilTurn=this.turn+1;
+          this.log(`相手の次の番、このポケモンのにげるコストが${opp.active.retreatCostIncrease}増加！`);
+        }
         if(!opponentActiveProtected&&ge.defendingAttackFailureOnTailsNextTurn){
           opp.active.attackFailureOnTailsUntilTurn=this.turn+1;
           this.log('相手のバトルポケモンは次の番、ワザを使うときにコイントス！');
@@ -9943,7 +9956,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         if(['Asleep','Paralyzed'].includes(this.p.active.status)){ui.toast(this.p.active.status==='Asleep'?'ねむり状態のためにげられません':'マヒ状態のためにげられません');return;}
         if(Number(this.p.active.retreatBlockedUntilTurn||0)>=this.turn){ui.toast('ワザの効果で、今はにげられません');return;}
-        const cost = Math.max(0, (CARD_MAP[this.p.active.cardId].retreat || 0) - this.p.retreatDiscount);
+        const retreatIncrease=Number(this.p.active.retreatCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(this.p.active.retreatCostIncrease||0)):0;
+        const cost = Math.max(0, (CARD_MAP[this.p.active.cardId].retreat || 0) + retreatIncrease - this.p.retreatDiscount);
         if (this.p.active.energies.length < cost) { ui.toast(`にげるエネルギーが足りません (必要:${cost}個)`); return; }
         ui.openSelectModal(`にげる (エネ${cost}個消費) - 交代先を選択`, this.p.bench.map((b, bi) => `<div onclick="ui.closeSelectModal();battle.startRetreat(${bi},${cost});" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-sky-700 mt-1">交代</span></div>`).join(''));
       },
@@ -10155,6 +10169,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(Number(inst.attackDamageReductionUntilTurn||0)>=this.turn&&Number(inst.attackDamageReduction||0)>0)temporaryEffects.push(`受けるワザのダメージ-${Number(inst.attackDamageReduction)}`);
         if(Number(inst.attackDamagePenaltyUntilTurn||0)>=this.turn&&Number(inst.attackDamagePenalty||0)>0)temporaryEffects.push(`使うワザのダメージ-${Number(inst.attackDamagePenalty)}`);
         if(Number(inst.attackFailureOnTailsUntilTurn||0)>=this.turn)temporaryEffects.push('ワザを使うときコイントス');
+        if(Number(inst.attackCostIncreaseUntilTurn||0)>=this.turn)temporaryEffects.push(`ワザコスト+${Number(inst.attackCostIncrease||0)}`);
+        if(Number(inst.retreatCostIncreaseUntilTurn||0)>=this.turn)temporaryEffects.push(`にげるコスト+${Number(inst.retreatCostIncrease||0)}`);
         if(Number(inst.retreatBlockedUntilTurn||0)>=this.turn)temporaryEffects.push('にげられない');
         if(Number(inst.attackBlockedUntilTurn||0)>=this.turn)temporaryEffects.push('ワザを使えない');
         const temporaryEffectSummary=temporaryEffects.join('・');
