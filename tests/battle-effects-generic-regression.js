@@ -69,7 +69,13 @@ const abilityCases = [
   ["Once during your turn, if this Pokémon is on your Bench, you may switch it with your Active Pokémon.", 'action', 'switchSelfFromBench'],
   ["Once during your turn, you may switch your Active [Water] Pokémon with 1 of your Benched [Water] Pokémon.", 'action', 'switchOwnActiveWithBench'],
   ["As long as this Pokémon is in the Active Spot, your opponent can't use any Supporter cards from their hand.", 'lockSupporterWhileActive', true],
-  ["This Pokémon takes −20 damage from attacks from [Fire] or [Water] Pokémon.", 'passiveDamageReduction', 20]
+  ["This Pokémon takes −20 damage from attacks from [Fire] or [Water] Pokémon.", 'passiveDamageReduction', 20],
+  ["If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon, do 20 damage to the Attacking Pokémon.", 'counterDamageOnAttack', 20],
+  ["If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, do 50 damage to the Attacking Pokémon.", 'counterDamageOnKnockout', 50],
+  ["This Pokémon can't be affected by any Special Conditions.", 'preventSpecialConditions', true],
+  ["Whenever you attach a [Darkness] Energy from your Energy Zone to this Pokémon, do 20 damage to your opponent's Active Pokémon.", 'damageOpponentOnEnergyAttach', 20],
+  ["Once during your turn, you may look at the top card of your deck.", 'action', 'lookAtTopCard'],
+  ["As often as you like during your turn, you may choose 1 of your Pokémon that has damage on it, and move all of its damage to this Pokémon.", 'action', 'moveDamageToSelf']
 ];
 for (const [text, key, expected] of abilityCases) {
   const parsed = parseAbility.call(parserContext, text);
@@ -92,6 +98,30 @@ assert.equal(applyDefenses.call(defenseContext, fireGuard, 50, 'Fire'), 30);
 assert.equal(applyDefenses.call(defenseContext, fireGuard, 50, 'Water'), 50);
 assert.equal(applyDefenses.call(defenseContext, { cardId: 'generalGuard' }, 50, 'Water'), 40);
 
+const reactiveCardMap = {
+  aura: { name: 'Aura Pokémon', ability: { name: 'Energy Aura', genericEffect: { energyType: 'Darkness', damageOpponentOnEnergyAttach: 20 } } },
+  guard: { name: 'Guard Pokémon', ability: { genericEffect: { preventSpecialConditions: true } } }
+};
+const auraMethod = method('nightmareAura');
+const runAura = new Function('CARD_MAP', 'getCardDisplayName', `return ({${auraMethod}}).nightmareAura;`)(
+  reactiveCardMap, card => card.name
+);
+let auraChecks = 0;
+const auraContext = {
+  p: { active: { hp: 100 } }, o: { active: { hp: 100 } },
+  showDmg() {}, log() {}, checkKO() { auraChecks++; return false; }
+};
+assert.equal(runAura.call(auraContext, 'player', { cardId: 'aura' }, 'Darkness'), false);
+assert.equal(auraContext.o.active.hp, 80, 'Energy attachment trigger damage');
+assert.equal(auraChecks, 1, 'Energy attachment trigger KO check');
+
+const specialConditionMethod = method('applySpecialCondition');
+const applyCondition = new Function('CARD_MAP', `return ({${specialConditionMethod}}).applySpecialCondition;`)(reactiveCardMap);
+const immunePokemon = { cardId: 'guard', status: null, statusEffects: [] };
+assert.equal(applyCondition.call({ log() {} }, immunePokemon, 'Poisoned'), false);
+assert.deepEqual(immunePokemon.statusEffects, [], 'immune Pokémon must remain free of Special Conditions');
+
+
 assert.match(html, /this\.resolveGenericAbility\(side,z,i\)/, 'generic Abilities are not routed to the resolver');
 assert.match(html, /if\(ge\.attachEnergyFromZone>0\)/, 'Energy Zone attack effect is not applied');
 assert.match(html, /if\(ge\.moveEnergyToBench&&choice/, 'attack Energy movement is not applied');
@@ -100,5 +130,9 @@ assert.match(html, /if\(ge\.action==='gustOpponent'&&chosen/, 'gust Ability is n
 assert.match(html, /if\(ge\.action==='moveAllBenchEnergyToActive'&&chosen/, 'mass Energy movement Ability is not resolved');
 assert.match(html, /discardAllEnergyType/, 'type-specific Energy discard is not resolved');
 assert.match(html, /passiveDamageReductionTypes/, 'passive damage reduction is not applied');
+assert.match(html, /knockoutAbility\?\.counterDamageOnKnockout/, 'knockout-triggered counter damage is not resolved');
+assert.match(html, /preventSpecialConditions/, 'special-condition immunity is not enforced');
+assert.match(html, /damageOpponentOnEnergyAttach/, 'Energy-attachment ability trigger is not resolved');
+assert.match(html, /this\.nightmareAura\(side,target,energyType\)/, 'attack Energy attachments do not trigger attachment abilities');
 
 console.log('All generic battle-effect regression checks passed.');
