@@ -6995,6 +6995,14 @@ const PACK_CATALOG_DATA = {
           const statuses=readStatuses(combinedCoinStatus[1]);
           if(statuses)return {coinCount:1,coinFailDamageZero:true,opponentStatusesIfHeads:statuses};
         }
+        if((m=t.match(/^This attack does (\d+) more damage for each of your Benched ([A-Za-z][A-Za-z0-9'♀♂ .-]*)$/i)))return {bonusPerNamedBenchPokemon:Number(m[1]),benchPokemonNames:m[2].split(/\s+or\s+/i).map(x=>x.trim())};
+        if((m=t.match(/^If ([A-Za-z][A-Za-z0-9'♀♂ .-]*) is on your Bench, this attack does (\d+) more damage$/i)))return {bonusIfBenchPokemonName:m[1].trim(),bonusIfBenchPokemonNameDamage:Number(m[2])};
+        if((m=t.match(/^If this (?:Pokémon|Pokemon) has a Pokémon Tool attached, this attack does (\d+) more damage$/i)))return {bonusIfSelfHasTool:Number(m[1])};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has a Pokémon Tool attached, this attack does (\d+) more damage$/i)))return {bonusIfOpponentHasTool:Number(m[1])};
+        if((m=t.match(/^If any of your Benched (?:Pokémon|Pokemon) have damage on them, this attack does (\d+) more damage$/i)))return {bonusIfAnyBenchDamaged:Number(m[1])};
+        if((m=t.match(/^If this (?:Pokémon|Pokemon) has no damage on it, this attack does (\d+) more damage$/i)))return {bonusIfSelfUndamaged:Number(m[1])};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has more remaining HP than this (?:Pokémon|Pokemon), this attack does (\d+) more damage$/i)))return {bonusIfOpponentHasMoreHp:Number(m[1])};
+        if((m=t.match(/^If this (?:Pokémon|Pokemon) evolved during this turn, this attack does (\d+) more damage$/i)))return {bonusIfEvolvedThisTurn:Number(m[1])};
         const clauses=t.split(/(?<=\.)\s+(?=[A-Z])/);
         if(clauses.length>1){const combined={};for(const clause of clauses){const part=this.parseGenericEffect(clause);if(part)Object.assign(combined,part);}if(Object.keys(combined).length)return combined;}
         return null;
@@ -9318,6 +9326,25 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(atk.genericEffect?.bonusIfOpponentType && defC.type===atk.genericEffect.bonusIfOpponentType) dmg += Number(atk.genericEffect.bonusIfOpponentTypeDamage||0);
         if(atk.genericEffect?.bonusPerOpponentRetreatEnergy) dmg += Number(atk.genericEffect.bonusPerOpponentRetreatEnergy||0)*Number(defC.retreat||0);
         if(atk.genericEffect?.selfHpThreshold && attInst.hp<=Number(atk.genericEffect.selfHpThreshold)) dmg += Number(atk.genericEffect.bonusIfSelfHpAtMost||0);
+        if(atk.genericEffect?.bonusPerNamedBenchPokemon>0){
+          const names=Array.isArray(atk.genericEffect.benchPokemonNames)?atk.genericEffect.benchPokemonNames:[];
+          const count=s.bench.filter(p=>{
+            const c=CARD_MAP[p.cardId]||{};
+            const cardNames=[c.sourceNameEN,c.name,c.jpName,c.enDetail?.name].filter(Boolean).map(x=>String(x).trim().toLowerCase());
+            return names.some(name=>cardNames.includes(String(name).trim().toLowerCase()));
+          }).length;
+          dmg+=Number(atk.genericEffect.bonusPerNamedBenchPokemon)*count;
+        }
+        if(atk.genericEffect?.bonusIfBenchPokemonName){
+          const wanted=String(atk.genericEffect.bonusIfBenchPokemonName).trim().toLowerCase();
+          const found=s.bench.some(p=>{const c=CARD_MAP[p.cardId]||{};return [c.sourceNameEN,c.name,c.jpName,c.enDetail?.name].some(n=>n&&String(n).trim().toLowerCase()===wanted);});
+          if(found)dmg+=Number(atk.genericEffect.bonusIfBenchPokemonNameDamage||0);
+        }
+        if(atk.genericEffect?.bonusIfAnyBenchDamaged&&s.bench.some(p=>p.hp<p.maxHp))dmg+=Number(atk.genericEffect.bonusIfAnyBenchDamaged);
+        if(atk.genericEffect?.bonusIfSelfUndamaged&&attInst.hp>=attInst.maxHp)dmg+=Number(atk.genericEffect.bonusIfSelfUndamaged);
+        if(atk.genericEffect?.bonusIfOpponentHasMoreHp&&defInst.hp>attInst.hp)dmg+=Number(atk.genericEffect.bonusIfOpponentHasMoreHp);
+        if(atk.genericEffect?.bonusIfEvolvedThisTurn&&Number(attInst.turnPlayed)===this.turn)dmg+=Number(atk.genericEffect.bonusIfEvolvedThisTurn);
+
         switch (atk.fx) {
           case 'bench_lightning30': dmg = s.bench.filter(b => CARD_MAP[b.cardId].type === 'Lightning').length * 30 + bonus; break;
           case 'bench20': dmg += s.bench.length * 20; break;
