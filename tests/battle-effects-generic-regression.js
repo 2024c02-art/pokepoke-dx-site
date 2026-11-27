@@ -70,6 +70,10 @@ const abilityCases = [
   ["Once during your turn, you may switch your Active [Water] Pokémon with 1 of your Benched [Water] Pokémon.", 'action', 'switchOwnActiveWithBench'],
   ["As long as this Pokémon is in the Active Spot, your opponent can't use any Supporter cards from their hand.", 'lockSupporterWhileActive', true],
   ["This Pokémon takes −20 damage from attacks from [Fire] or [Water] Pokémon.", 'passiveDamageReduction', 20],
+  ["Each [Grass] Energy attached to your [Grass] Pokémon provides 2 [Grass] Energy. This effect doesn't stack.", 'energyMultiplier', 2],
+  ["If this Pokémon has any Energy attached, it has no Retreat Cost.", 'retreatCostZeroIfHasEnergy', true],
+  ["As long as this Pokémon is on your Bench, your Active Basic Pokémon's Retreat Cost is 1 less.", 'activeBasicRetreatCostReduction', 1],
+  ["During your first turn, this Pokémon has no Retreat Cost.", 'retreatCostZeroFirstTurn', true],
   ["If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon, do 20 damage to the Attacking Pokémon.", 'counterDamageOnAttack', 20],
   ["If this Pokémon is in the Active Spot and is Knocked Out by damage from an attack from your opponent's Pokémon, do 50 damage to the Attacking Pokémon.", 'counterDamageOnKnockout', 50],
   ["This Pokémon can't be affected by any Special Conditions.", 'preventSpecialConditions', true],
@@ -121,6 +125,44 @@ const immunePokemon = { cardId: 'guard', status: null, statusEffects: [] };
 assert.equal(applyCondition.call({ log() {} }, immunePokemon, 'Poisoned'), false);
 assert.deepEqual(immunePokemon.statusEffects, [], 'immune Pokémon must remain free of Special Conditions');
 
+const energyCardMap = {
+  grassTotem: { type: 'Grass', ability: { genericEffect: { energyMultiplier: 2, energyType: 'Grass', providedEnergyType: 'Grass', pokemonType: 'Grass' } } },
+  grassActive: { type: 'Grass', stage: 'Basic', retreat: 2 },
+  retreatReducer: { type: 'Colorless', ability: { genericEffect: { activeBasicRetreatCostReduction: 1 } } },
+  energyRetreat: { type: 'Water', retreat: 2, ability: { genericEffect: { retreatCostZeroIfHasEnergy: true } } }
+};
+const canPayMethod = method('canPay');
+const canPay = new Function('CARD_MAP', `return ({${canPayMethod}}).canPay;`)(energyCardMap);
+const grassActive = { cardId: 'grassActive', energies: ['Grass'] };
+const doubledPool = { p: { active: grassActive, bench: [{ cardId: 'grassTotem' }] }, o: { active: null, bench: [] }, turn: 3 };
+assert.equal(canPay.call(doubledPool, grassActive, ['Grass', 'Grass']), true, 'one Grass Energy should provide two Grass Energy with Jungle Totem');
+assert.equal(canPay.call({ p: { active: grassActive, bench: [] }, o: { active: null, bench: [] }, turn: 3 }, grassActive, ['Grass', 'Grass']), false, 'Grass Energy multiplier must not work without its Ability');
+
+const retreatMethod = method('getEffectiveRetreatCost');
+const getRetreatCost = new Function('CARD_MAP', `return ({${retreatMethod}}).getEffectiveRetreatCost;`)(energyCardMap);
+const retreatContext = { p: { active: grassActive, bench: [{ cardId: 'retreatReducer' }], retreatDiscount: 0 }, o: {}, turn: 3, isOwnFirstTurn: () => false };
+assert.equal(getRetreatCost.call(retreatContext, 'player', grassActive), 1, 'Benched passive should reduce Active Basic retreat cost');
+assert.equal(getRetreatCost.call(retreatContext, 'player', { cardId: 'energyRetreat', energies: ['Water'] }), 0, 'attached-energy retreat Ability should make retreat free');
+
+const koMap = {
+  attacker: { pointValue: 1 },
+  retaliator: { pointValue: 1, ability: { genericEffect: { counterDamageOnKnockout: 50 } } },
+  backup: { pointValue: 1 }
+};
+const checkKOMethod = method('checkKO');
+const resolveKO = new Function('CARD_MAP', 'getCardDisplayName', `return ({${checkKOMethod}}).checkKO;`)(koMap, card => card?.name || 'Pokémon');
+const koContext = {
+  over: false, resolvingAttackSide: 'player', turn: 3, pendingSelfKO: false, isOnlineP2P: false,
+  p: { active: { cardId: 'attacker', hp: 20, maxHp: 100, under: [] }, bench: [{ cardId: 'backup', hp: 60, maxHp: 60, under: [] }], discard: [], points: 0, name: 'Player' },
+  o: { active: { cardId: 'retaliator', hp: 0, maxHp: 100, under: [] }, bench: [{ cardId: 'backup', hp: 60, maxHp: 60, under: [] }], discard: [], points: 0, name: 'Opponent' },
+  log() {}, render() {}, openPromotionSelector() {}, endMatch() { this.over = true; },
+  checkKO(defSide, z, index, isBench) { return resolveKO.call(this, defSide, z, index, isBench); }
+};
+resolveKO.call(koContext, 'opp', 'active', 0, false);
+assert.equal(koContext.p.points, 1, 'knocked-out Ability holder should award its point');
+assert.equal(koContext.o.points, 1, 'knockout counter damage should also knock out the attacker');
+
+
 
 assert.match(html, /this\.resolveGenericAbility\(side,z,i\)/, 'generic Abilities are not routed to the resolver');
 assert.match(html, /if\(ge\.attachEnergyFromZone>0\)/, 'Energy Zone attack effect is not applied');
@@ -130,6 +172,8 @@ assert.match(html, /if\(ge\.action==='gustOpponent'&&chosen/, 'gust Ability is n
 assert.match(html, /if\(ge\.action==='moveAllBenchEnergyToActive'&&chosen/, 'mass Energy movement Ability is not resolved');
 assert.match(html, /discardAllEnergyType/, 'type-specific Energy discard is not resolved');
 assert.match(html, /passiveDamageReductionTypes/, 'passive damage reduction is not applied');
+assert.match(html, /energyMultiplier>1/, 'Grass Energy multiplier is not applied to attack costs');
+assert.match(html, /getEffectiveRetreatCost\('player',this\.p\.active\)/, 'passive retreat effects are not used when retreating');
 assert.match(html, /knockoutAbility\?\.counterDamageOnKnockout/, 'knockout-triggered counter damage is not resolved');
 assert.match(html, /preventSpecialConditions/, 'special-condition immunity is not enforced');
 assert.match(html, /damageOpponentOnEnergyAttach/, 'Energy-attachment ability trigger is not resolved');
