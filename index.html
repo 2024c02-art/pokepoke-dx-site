@@ -7028,6 +7028,14 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If this (?:Pokémon|Pokemon) is in the Active Spot and is Knocked Out by damage from an attack from your opponent's (?:Pokémon|Pokemon), do (\d+) damage to the Attacking (?:Pokémon|Pokemon)$/i)))return {passive:true,counterDamageOnKnockout:Number(m[1]),requiresActive:true};
         if(/^This (?:Pokémon|Pokemon) can't be affected by any Special Conditions$/i.test(t))return {passive:true,preventSpecialConditions:true};
         if((m=t.match(/^Each \[([A-Za-z]+)\] Energy attached to your \[([A-Za-z]+)\] (?:Pokémon|Pokemon) provides (\d+) \[([A-Za-z]+)\] Energy\. This effect doesn't stack$/i)))return {passive:true,energyMultiplier:Number(m[3]),energyType:typeOf(m[1]),pokemonType:typeOf(m[2]),providedEnergyType:typeOf(m[4])};
+        if((m=t.match(/^Attacks used by your \[([A-Za-z]+)\] (?:Pokémon|Pokemon) do \+(\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {passive:true,passiveAttackDamageBonusType:typeOf(m[1]),passiveAttackDamageBonus:Number(m[2])};
+        if((m=t.match(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, attacks used by your opponent's Active (?:Pokémon|Pokemon) cost (\d+) \[([A-Za-z]+)\] more$/i)))return {passive:true,opponentActiveAttackCostIncrease:Number(m[1]),opponentActiveAttackCostType:typeOf(m[2])};
+        if((m=t.match(/^During (?:Pokémon|Pokemon) Checkup, if this (?:Pokémon|Pokemon) is in the Active Spot, do (\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {passive:true,checkupDamageOpponentActive:Number(m[1])};
+        if((m=t.match(/^During (?:Pokémon|Pokemon) Checkup, heal (\d+) damage from each of your (?:Pokémon|Pokemon)$/i)))return {passive:true,checkupHealEachOwn:Number(m[1])};
+        if((m=t.match(/^At the end of your turn, if this (?:Pokémon|Pokemon) is in the Active Spot, heal (\d+) damage from it$/i)))return {passive:true,endTurnHealSelf:Number(m[1])};
+        if(/^At the end of your turn, if this (?:Pokémon|Pokemon) is in the Active Spot, draw a card$/i.test(t))return {passive:true,endTurnDrawCards:1};
+        if((m=t.match(/^At the end of each turn, if your opponent's Active (?:Pokémon|Pokemon) is Asleep, do (\d+) damage to that (?:Pokémon|Pokemon)$/i)))return {passive:true,damageOpponentIfAsleepAtCheckup:Number(m[1])};
+        if((m=t.match(/^Your opponent's Active (?:Pokémon|Pokemon) takes \+(\d+) damage from being Poisoned$/i)))return {passive:true,opponentPoisonCheckupBonus:Number(m[1])};
         if(/^If this (?:Pokémon|Pokemon) has any Energy attached, it has no Retreat Cost$/i.test(t))return {passive:true,retreatCostZeroIfHasEnergy:true};
         if((m=t.match(/^As long as this (?:Pokémon|Pokemon) is on your Bench, your Active Basic (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,activeBasicRetreatCostReduction:Number(m[1])};
         if(/^During your first turn, this (?:Pokémon|Pokemon) has no Retreat Cost$/i.test(t))return {passive:true,retreatCostZeroFirstTurn:true};
@@ -8644,9 +8652,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if(!inst) continue;
           const effects=Array.isArray(inst.statusEffects)?inst.statusEffects:[];
           if(effects.includes('Poisoned')){
-            inst.hp-=10;
-            this.showDmg(owner==='player'?'player-active':'opp-active',10,false);
-            this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}はどくで10ダメージを受けた！`);
+            const poisonSourceBoard=owner==='player'?this.o:this.p;
+            const poisonBonus=[poisonSourceBoard?.active,...(poisonSourceBoard?.bench||[])].filter(Boolean).reduce((sum,p)=>sum+Number(CARD_MAP[p.cardId]?.ability?.genericEffect?.opponentPoisonCheckupBonus||0),0);
+            const poisonDamage=10+poisonBonus;
+            inst.hp-=poisonDamage;
+            this.showDmg(owner==='player'?'player-active':'opp-active',poisonDamage,false);
+            this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}はどくで${poisonDamage}ダメージを受けた！`);
           }
           if(effects.includes('Burned')){
             inst.hp-=20;
@@ -8665,6 +8676,41 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }else if(inst.status==='Paralyzed'&&Number(inst.statusUntilTurn||0)<this.turn){
             inst.status=null;inst.statusUntilTurn=0;
             this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}のマヒが回復した！`);
+          }
+          const abilityEffect=CARD_MAP[inst.cardId]?.ability?.genericEffect||{};
+          if(abilityEffect.checkupHealEachOwn>0){
+            for(const pokemon of [board.active,...board.bench].filter(Boolean)){
+              pokemon.hp=Math.min(pokemon.maxHp,pokemon.hp+Number(abilityEffect.checkupHealEachOwn));
+            }
+            this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}の特性！自分のポケモン全員のHPを${Number(abilityEffect.checkupHealEachOwn)}回復！`);
+          }
+          if(abilityEffect.checkupDamageOpponentActive>0){
+            const opposingBoard=owner==='player'?this.o:this.p;
+            if(opposingBoard.active){
+              const damage=Number(abilityEffect.checkupDamageOpponentActive);
+              opposingBoard.active.hp-=damage;
+              this.showDmg(owner==='player'?'opp-active':'player-active',damage,false);
+              this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}の特性！相手のバトルポケモンに${damage}ダメージ！`);
+              if(opposingBoard.active.hp<=0)knockedOut.push(owner==='player'?'opp':'player');
+            }
+          }
+          if(abilityEffect.damageOpponentIfAsleepAtCheckup>0){
+            const opposingBoard=owner==='player'?this.o:this.p;
+            if(opposingBoard.active?.status==='Asleep'){
+              const damage=Number(abilityEffect.damageOpponentIfAsleepAtCheckup);
+              opposingBoard.active.hp-=damage;
+              this.showDmg(owner==='player'?'opp-active':'player-active',damage,false);
+              this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}の特性！ねむっている相手に${damage}ダメージ！`);
+              if(opposingBoard.active.hp<=0)knockedOut.push(owner==='player'?'opp':'player');
+            }
+          }
+          if(owner===previousSide&&abilityEffect.endTurnHealSelf>0){
+            inst.hp=Math.min(inst.maxHp,inst.hp+Number(abilityEffect.endTurnHealSelf));
+            this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}の特性！HPを${Number(abilityEffect.endTurnHealSelf)}回復！`);
+          }
+          if(owner===previousSide&&abilityEffect.endTurnDrawCards>0){
+            this.drawCards(owner,Number(abilityEffect.endTurnDrawCards));
+            this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}の特性！カードを${Number(abilityEffect.endTurnDrawCards)}枚引いた！`);
           }
           if(inst.hp<=0) knockedOut.push(owner);
         }
@@ -9272,7 +9318,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           .find(effect=>effect?.energyMultiplier>1&&effect.energyType===effect.providedEnergyType);
         const multiplierApplies=!!energyMultiplier&&CARD_MAP[inst?.cardId]?.type===energyMultiplier.pokemonType;
         const pool=multiplierApplies?rawPool.flatMap(type=>Array(Math.max(1,Number(type===energyMultiplier.energyType?energyMultiplier.energyMultiplier:1))).fill(type)):rawPool;
-        const extraCost=Number(inst?.attackCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.attackCostIncrease||0)):0;
+        const opposingBoard=side==='player'?this.o:this.p;
+        const opponentAbility=inst===board?.active?CARD_MAP[opposingBoard?.active?.cardId]?.ability?.genericEffect:null;
+        const passiveExtra=Number(opponentAbility?.opponentActiveAttackCostIncrease||0);
+        const extraCost=(Number(inst?.attackCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.attackCostIncrease||0)):0)+passiveExtra;
         const required=[...(cost||[]),...Array(extraCost).fill('Colorless')];
         for(const r of required.filter(x=>x!=='Colorless')){
           const i=pool.indexOf(r);if(i===-1)return false;pool.splice(i,1);
@@ -9300,6 +9349,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const attC = CARD_MAP[attInst.cardId], defC = CARD_MAP[defInst.cardId];
         const bonus = s.dmgBonus || 0;
         let dmg = atk.genericEffect?.damageEqualsRemainingHp ? Math.max(0,Number(attInst.hp)||0) + bonus : atk.damage + bonus;
+        const teamAttackBonus=[s.active,...s.bench].filter(Boolean).reduce((sum,p)=>{
+          const effect=CARD_MAP[p.cardId]?.ability?.genericEffect;
+          return sum+(effect?.passiveAttackDamageBonusType===attC.type?Number(effect.passiveAttackDamageBonus||0):0);
+        },0);
+        dmg+=teamAttackBonus;
         if(atk.genericEffect?.bonusPerOpponentPoint) dmg += Number(atk.genericEffect.bonusPerOpponentPoint||0)*Number(opp.points||0);
         if(atk.genericEffect?.bonusPerEnergy) dmg += Number(atk.genericEffect.bonusPerEnergy||0)*attInst.energies.length;
         if(atk.genericEffect?.bonusPerOpponentEnergy) dmg += Number(atk.genericEffect.bonusPerOpponentEnergy||0)*opp.active.energies.length;
