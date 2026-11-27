@@ -7027,6 +7027,10 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If this (?:Pokémon|Pokemon) is in the Active Spot and is damaged by an attack from your opponent's (?:Pokémon|Pokemon), do (\d+) damage to the Attacking (?:Pokémon|Pokemon)$/i)))return {passive:true,counterDamageOnAttack:Number(m[1]),requiresActive:true};
         if((m=t.match(/^If this (?:Pokémon|Pokemon) is in the Active Spot and is Knocked Out by damage from an attack from your opponent's (?:Pokémon|Pokemon), do (\d+) damage to the Attacking (?:Pokémon|Pokemon)$/i)))return {passive:true,counterDamageOnKnockout:Number(m[1]),requiresActive:true};
         if(/^This (?:Pokémon|Pokemon) can't be affected by any Special Conditions$/i.test(t))return {passive:true,preventSpecialConditions:true};
+        if((m=t.match(/^Each \[([A-Za-z]+)\] Energy attached to your \[([A-Za-z]+)\] (?:Pokémon|Pokemon) provides (\d+) \[([A-Za-z]+)\] Energy\. This effect doesn't stack$/i)))return {passive:true,energyMultiplier:Number(m[3]),energyType:typeOf(m[1]),pokemonType:typeOf(m[2]),providedEnergyType:typeOf(m[4])};
+        if(/^If this (?:Pokémon|Pokemon) has any Energy attached, it has no Retreat Cost$/i.test(t))return {passive:true,retreatCostZeroIfHasEnergy:true};
+        if((m=t.match(/^As long as this (?:Pokémon|Pokemon) is on your Bench, your Active Basic (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,activeBasicRetreatCostReduction:Number(m[1])};
+        if(/^During your first turn, this (?:Pokémon|Pokemon) has no Retreat Cost$/i.test(t))return {passive:true,retreatCostZeroFirstTurn:true};
         if((m=t.match(/^Whenever you attach a \[([A-Za-z]+)\] Energy from your Energy Zone to this (?:Pokémon|Pokemon), do (\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {passive:true,energyType:typeOf(m[1]),damageOpponentOnEnergyAttach:Number(m[2])};
         if(/^Once during your turn, you may look at the top card of your deck$/i.test(t))return {action:'lookAtTopCard'};
         if((m=t.match(/^As often as you like during your turn, you may choose 1 of your (?:Pokémon|Pokemon) that has damage on it, and move all of its damage to this (?:Pokémon|Pokemon)$/i)))return {action:'moveDamageToSelf',repeatable:true};
@@ -9260,13 +9264,20 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       },
 
       canPay(inst, cost) {
-        const pool = [...inst.energies];
-        const extraCost=Number(inst.attackCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.attackCostIncrease||0)):0;
-        const required=[...cost,...Array(extraCost).fill('Colorless')];
-        for (const r of required.filter(x => x !== 'Colorless')) {
-          const i = pool.indexOf(r); if (i === -1) return false; pool.splice(i, 1);
+        const rawPool=[...(inst?.energies||[])];
+        const side=this.p?.active===inst||this.p?.bench?.includes(inst)?'player':'opp';
+        const board=side==='player'?this.p:this.o;
+        const energyMultiplier=[board?.active,...(board?.bench||[])].filter(Boolean)
+          .map(p=>CARD_MAP[p.cardId]?.ability?.genericEffect)
+          .find(effect=>effect?.energyMultiplier>1&&effect.energyType===effect.providedEnergyType);
+        const multiplierApplies=!!energyMultiplier&&CARD_MAP[inst?.cardId]?.type===energyMultiplier.pokemonType;
+        const pool=multiplierApplies?rawPool.flatMap(type=>Array(Math.max(1,Number(type===energyMultiplier.energyType?energyMultiplier.energyMultiplier:1))).fill(type)):rawPool;
+        const extraCost=Number(inst?.attackCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.attackCostIncrease||0)):0;
+        const required=[...(cost||[]),...Array(extraCost).fill('Colorless')];
+        for(const r of required.filter(x=>x!=='Colorless')){
+          const i=pool.indexOf(r);if(i===-1)return false;pool.splice(i,1);
         }
-        return pool.length >= required.filter(x => x === 'Colorless').length;
+        return pool.length>=required.filter(x=>x==='Colorless').length;
       },
 
       energyEffectType(code) { const key=String(code||'').trim().toUpperCase();return ({G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal',C:'Colorless',GRASS:'Grass',FIRE:'Fire',WATER:'Water',LIGHTNING:'Lightning',PSYCHIC:'Psychic',FIGHTING:'Fighting',DARKNESS:'Darkness',METAL:'Metal',COLORLESS:'Colorless',DRAGON:'Dragon'})[key]||null; },
@@ -10112,14 +10123,31 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (this.isOnlineP2P) this.syncToPeer(false);
       },
 
+      getEffectiveRetreatCost(side,inst) {
+        if(!inst)return 0;
+        const board=side==='player'?this.p:this.o,card=CARD_MAP[inst.cardId],ownEffect=card?.ability?.genericEffect||{};
+        if(ownEffect.retreatCostZeroIfHasEnergy&&inst.energies?.length)return 0;
+        if(ownEffect.retreatCostZeroFirstTurn&&this.isOwnFirstTurn(side))return 0;
+        let cost=Math.max(0,Number(card?.retreat)||0);
+        const increase=Number(inst.retreatCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.retreatCostIncrease)||0):0;
+        cost+=increase;
+        if(inst===board?.active){
+          const reduction=(board?.bench||[]).reduce((sum,p)=>{
+            const effect=CARD_MAP[p.cardId]?.ability?.genericEffect;
+            return sum+(effect?.activeBasicRetreatCostReduction&&CARD_MAP[inst.cardId]?.stage==='Basic'?Number(effect.activeBasicRetreatCostReduction):0);
+          },0);
+          cost-=reduction;
+        }
+        cost-=Math.max(0,Number(board?.retreatDiscount)||0);
+        return Math.max(0,cost);
+      },
       initiateRetreat() {
         if (this.over || this.actionLocked || this.phase !== 'play' || this.currentSide !== 'player' || this.p.retreated || !this.p.active || this.p.bench.length === 0) {
           ui.toast('今はにげられません'); return;
         }
         if(['Asleep','Paralyzed'].includes(this.p.active.status)){ui.toast(this.p.active.status==='Asleep'?'ねむり状態のためにげられません':'マヒ状態のためにげられません');return;}
         if(Number(this.p.active.retreatBlockedUntilTurn||0)>=this.turn){ui.toast('ワザの効果で、今はにげられません');return;}
-        const retreatIncrease=Number(this.p.active.retreatCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(this.p.active.retreatCostIncrease||0)):0;
-        const cost = Math.max(0, (CARD_MAP[this.p.active.cardId].retreat || 0) + retreatIncrease - this.p.retreatDiscount);
+        const cost=this.getEffectiveRetreatCost('player',this.p.active);
         if (this.p.active.energies.length < cost) { ui.toast(`にげるエネルギーが足りません (必要:${cost}個)`); return; }
         ui.openSelectModal(`にげる (エネ${cost}個消費) - 交代先を選択`, this.p.bench.map((b, bi) => `<div onclick="ui.closeSelectModal();battle.startRetreat(${bi},${cost});" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-sky-700 mt-1">交代</span></div>`).join(''));
       },
