@@ -13,6 +13,7 @@ const cases=[
   ["During your opponent's next turn, the Defending Pokémon can't attack.",'defendingCannotAttackNextTurn',true],
   ["If the Defending Pokémon is a Basic Pokémon, it can't attack during your opponent's next turn.",'defendingCannotAttackNextTurnIfBasic',true],
   ["During your opponent's next turn, if the Defending Pokémon tries to use an attack, your opponent flips a coin. If tails, that attack doesn't happen.",'defendingAttackFailureOnTailsNextTurn',true],
+  ["During your opponent's next turn, attacks used by the Defending Pokémon cost 1 more, and its Retreat Cost is 1 more.", "defendingAttackCostIncreaseNextTurn", 1],
   ["During your opponent's next turn, they can't play any Item cards from their hand.",'opponentItemLockNextTurn',true],
   ["During your opponent's next turn, they can't play any Trainer cards from their hand.",'opponentTrainerLockNextTurn',true],
   ["If your opponent's Active Pokémon has an Ability, this attack does 40 more damage.",'bonusIfOpponentHasAbility',40],
@@ -97,4 +98,19 @@ assert.match(html,/selfHealEqualDamageDone/);
 assert.match(html,/blockedAttackNames/);
 assert.match(html,/lastKOByOpponentAttack/);
 assert.match(html,/sweetsRelayUsedTurn/);
+const costEffect=parse.call(ctx,"During your opponent's next turn, attacks used by the Defending Pokémon cost 1 more, and its Retreat Cost is 1 more.");
+assert.equal(costEffect.defendingRetreatCostIncreaseNextTurn,1,'retreat cost increase parser');
+const payStart=html.indexOf('canPay(inst, cost) {');
+const payEnd=html.indexOf('\n      },',payStart);
+assert.ok(payStart>=0&&payEnd>payStart,'energy payment checker exists');
+const payMethod=html.slice(payStart,payEnd+8);
+const canPay=new Function(\`return ({\${payMethod}}).canPay;\`)();
+const payer={energies:['Fire'],attackCostIncrease:1,attackCostIncreaseUntilTurn:4};
+assert.equal(canPay.call({turn:4},payer,['Fire']),false,'next-turn cost increase enforced');
+assert.equal(canPay.call({turn:5},payer,['Fire']),true,'cost increase expires');
+assert.match(html,/retreatCostIncreaseUntilTurn/);
+assert.match(html,/attackCostIncreaseUntilTurn/);
+assert.match(html,/defendingAttackCostIncreaseNextTurn/);
+assert.match(html,/defendingRetreatCostIncreaseNextTurn/);
+
 console.log('All expanded battle-effect regression checks passed.');
