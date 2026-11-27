@@ -6997,8 +6997,6 @@ const PACK_CATALOG_DATA = {
         }
         if((m=t.match(/^This attack does (\d+) more damage for each of your Benched ([A-Za-z][A-Za-z0-9'♀♂ .-]*)$/i)))return {bonusPerNamedBenchPokemon:Number(m[1]),benchPokemonNames:m[2].split(/\s+or\s+/i).map(x=>x.trim())};
         if((m=t.match(/^If ([A-Za-z][A-Za-z0-9'♀♂ .-]*) is on your Bench, this attack does (\d+) more damage$/i)))return {bonusIfBenchPokemonName:m[1].trim(),bonusIfBenchPokemonNameDamage:Number(m[2])};
-        if((m=t.match(/^If this (?:Pokémon|Pokemon) has a Pokémon Tool attached, this attack does (\d+) more damage$/i)))return {bonusIfSelfHasTool:Number(m[1])};
-        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has a Pokémon Tool attached, this attack does (\d+) more damage$/i)))return {bonusIfOpponentHasTool:Number(m[1])};
         if((m=t.match(/^If any of your Benched (?:Pokémon|Pokemon) have damage on them, this attack does (\d+) more damage$/i)))return {bonusIfAnyBenchDamaged:Number(m[1])};
         if((m=t.match(/^If this (?:Pokémon|Pokemon) has no damage on it, this attack does (\d+) more damage$/i)))return {bonusIfSelfUndamaged:Number(m[1])};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has more remaining HP than this (?:Pokémon|Pokemon), this attack does (\d+) more damage$/i)))return {bonusIfOpponentHasMoreHp:Number(m[1])};
