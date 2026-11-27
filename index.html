@@ -6905,7 +6905,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^This attack does (\d+) more damage for each point your opponent has taken$/i))) return {bonusPerOpponentPoint:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each Energy attached to this (?:Pokémon|Pokemon)$/i))) return {bonusPerEnergy:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each Energy attached to your opponent's Active (?:Pokémon|Pokemon)$/i))) return {bonusPerOpponentEnergy:Number(m[1])};
-        if((m=t.match(/^This attack does (\d+) damage for each of your Benched \[([A-Z])\] (?:Pokémon|Pokemon)$/i))) return {bonusPerBenchPokemon:Number(m[1]),benchPokemonType:m[2]};
+        if((m=t.match(/^This attack does (\d+) damage for each of your Benched \[([A-Za-z]+)\] (?:Pokémon|Pokemon)$/i))) return {bonusPerBenchPokemon:Number(m[1]),benchPokemonType:this.energyEffectType(m[2])};
         if((m=t.match(/^This attack does (\d+) more damage for each damage counter on this (?:Pokémon|Pokemon)$/i))) return {bonusPerDamageCounter:Number(m[1])};
         if((m=t.match(/^This attack (?:also )?does (\d+) damage to each of your opponent's Benched (?:Pokémon|Pokemon)$/i))) return {benchAllDamage:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) damage to each of your opponent's (?:Pokémon|Pokemon)$/i))) return {damageEachOpponent:Number(m[1]),benchAllDamage:Number(m[1])};
@@ -6924,10 +6924,11 @@ const PACK_CATALOG_DATA = {
         if(/^Flip a coin\. If tails, this attack does nothing$/i.test(t)) return {coinCount:1,coinFailDamageZero:true};
         if(/^Flip a coin\. If heads, discard a random Energy from your opponent's Active (?:Pokémon|Pokemon)$/i.test(t)) return {coinCount:1,coinThenDiscardOpponentRandomEnergy:true};
         if(/^Discard a random Energy from your opponent's Active (?:Pokémon|Pokemon)$/i.test(t)) return {discardOpponentRandomEnergy:1};
+        if((m=t.match(/^Discard all \[([A-Za-z]+)\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardAllEnergyType:this.energyEffectType(m[1])};
         if(/^Discard all Energy from this (?:Pokémon|Pokemon)$/i.test(t)) return {discardAllEnergy:true};
         if(/^Discard a random Energy from this (?:Pokémon|Pokemon)$/i.test(t)) return {discardRandomEnergy:1};
-        if((m=t.match(/^Discard (?:a|an) \[([GRWLPFDM])\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:1,energyType:this.energyMap[m[1].toUpperCase()]||null};
-        if((m=t.match(/^Discard (\d+) \[([GRWLPFDM])\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:Number(m[1]),energyType:this.energyMap[m[2].toUpperCase()]||null};
+        if((m=t.match(/^Discard (?:a|an) \[([A-Za-z]+)\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:1,energyType:this.energyEffectType(m[1])};
+        if((m=t.match(/^Discard (\d+) \[([A-Za-z]+)\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:Number(m[1]),energyType:this.energyEffectType(m[2])};
         if(/^Discard the top card of your deck$/i.test(t)) return {discardTopDeck:1};
         if(/^Discard the top card of your opponent's deck$/i.test(t)) return {discardTopOpponentDeck:1};
         if(/^Draw a card$/i.test(t) || /^Draw 1 card$/i.test(t)) return {drawCards:1};
@@ -6937,10 +6938,10 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^This attack does (\d+) more damage for each of your Benched (?:Pokémon|Pokemon)$/i))) return {bonusPerBenchPokemon:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) damage for each of your Benched (?:Pokémon|Pokemon)$/i))) return {damagePerBenchPokemon:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each Benched (?:Pokémon|Pokemon) \(both yours and your opponent's\)$/i))) return {bonusPerBothBenchPokemon:Number(m[1])};
-        if((m=t.match(/^This attack does (\d+) more damage for each \[([GRWLPFDM])\] Energy attached to this (?:Pokémon|Pokemon)$/i))) return {bonusPerEnergyType:Number(m[1]),energyType:this.energyMap[m[2].toUpperCase()]||null};
-        if((m=t.match(/^If this (?:Pokémon|Pokemon) has at least (\d+) extra \[([GRWLPFDM])\] Energy attached, this attack does (\d+) more damage$/i))) return {minExtraEnergy:Number(m[1]),energyType:this.energyMap[m[2].toUpperCase()]||null,bonusIfExtraEnergy:Number(m[3])};
+        if((m=t.match(/^This attack does (\d+) more damage for each \[([A-Za-z]+)\] Energy attached to this (?:Pokémon|Pokemon)$/i))) return {bonusPerEnergyType:Number(m[1]),energyType:this.energyEffectType(m[2])};
+        if((m=t.match(/^If this (?:Pokémon|Pokemon) has at least (\d+) extra \[([A-Za-z]+)\] Energy attached, this attack does (\d+) more damage$/i))) return {minExtraEnergy:Number(m[1]),energyType:this.energyEffectType(m[2]),bonusIfExtraEnergy:Number(m[3])};
         if((m=t.match(/^This attack does (\d+) more damage for each point you have gotten$/i))) return {bonusPerOwnPoint:Number(m[1])};
-        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is a \[([GRWLPFDM])\] (?:Pokémon|Pokemon), this attack does (\d+) more damage$/i))) return {bonusIfOpponentType:this.energyMap[m[1].toUpperCase()]||null,bonusIfOpponentTypeDamage:Number(m[2])};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is a \[([A-Za-z]+)\] (?:Pokémon|Pokemon), this attack does (\d+) more damage$/i))) return {bonusIfOpponentType:this.energyEffectType(m[1]),bonusIfOpponentTypeDamage:Number(m[2])};
         if((m=t.match(/^This attack does (\d+) more damage for each Energy in your opponent's Active (?:Pokémon|Pokemon)'s Retreat Cost$/i))) return {bonusPerOpponentRetreatEnergy:Number(m[1])};
         if((m=t.match(/^If this (?:Pokémon|Pokemon)'s remaining HP is (\d+) or less, this attack does (\d+) more damage$/i))) return {selfHpThreshold:Number(m[1]),bonusIfSelfHpAtMost:Number(m[2])};
         if((m=t.match(/^This attack's damage isn't affected by Weakness$/i))) return {ignoreWeakness:true};
@@ -6962,8 +6963,8 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If 1 of your Pokémon used Sweets Relay during your last turn, this attack does (\d+) more damage$/i))) return {bonusIfSweetsRelayLastTurn:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) damage for each time your Pokémon used Sweets Relay during this game$/i))) return {bonusPerSweetsRelayUsedThisGame:Number(m[1])};
         if((m=t.match(/^If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does (\d+) more damage$/i))) return {bonusIfPokemonKnockedOutLastTurn:Number(m[1])};
-        if((m=t.match(/^If any of your \[([GRWLPFDM])\] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does (\d+) more damage$/i))) return {bonusIfPokemonTypeKnockedOutLastTurn:this.energyMap[m[1].toUpperCase()]||null,bonusIfPokemonTypeKnockedOutLastTurnDamage:Number(m[2])};
-        if((m=t.match(/^This attack does (\d+) more damage for each \[([GRWLPFDM])\] Pokémon in your discard pile$/i))) return {bonusPerDiscardedPokemonType:Number(m[1]),discardedPokemonType:this.energyMap[m[2].toUpperCase()]||null};
+        if((m=t.match(/^If any of your \[([A-Za-z]+)\] Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does (\d+) more damage$/i))) return {bonusIfPokemonTypeKnockedOutLastTurn:this.energyEffectType(m[1]),bonusIfPokemonTypeKnockedOutLastTurnDamage:Number(m[2])};
+        if((m=t.match(/^This attack does (\d+) more damage for each \[([A-Za-z]+)\] Pokémon in your discard pile$/i))) return {bonusPerDiscardedPokemonType:Number(m[1]),discardedPokemonType:this.energyEffectType(m[2])};
         if((m=t.match(/^This attack does (\d+) more damage for each Pokémon in your discard pile$/i))) return {bonusPerDiscardedPokemon:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each Supporter card in your discard pile$/i))) return {bonusPerDiscardedSupporter:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each Item card in your discard pile$/i))) return {bonusPerDiscardedItem:Number(m[1])};
@@ -6994,6 +6995,8 @@ const PACK_CATALOG_DATA = {
           const statuses=readStatuses(combinedCoinStatus[1]);
           if(statuses)return {coinCount:1,coinFailDamageZero:true,opponentStatusesIfHeads:statuses};
         }
+        const clauses=t.split(/(?<=\.)\s+(?=[A-Z])/);
+        if(clauses.length>1){const combined={};for(const clause of clauses){const part=this.parseGenericEffect(clause);if(part)Object.assign(combined,part);}if(Object.keys(combined).length)return combined;}
         return null;
       },
       parseGenericAbility(text) {
@@ -9246,7 +9249,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return pool.length >= required.filter(x => x === 'Colorless').length;
       },
 
-      energyEffectType(code) { return ({G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal',C:'Colorless'})[String(code||'').toUpperCase()]||null; },
+      energyEffectType(code) { const key=String(code||'').trim().toUpperCase();return ({G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal',C:'Colorless',GRASS:'Grass',FIRE:'Fire',WATER:'Water',LIGHTNING:'Lightning',PSYCHIC:'Psychic',FIGHTING:'Fighting',DARKNESS:'Darkness',METAL:'Metal',COLORLESS:'Colorless',DRAGON:'Dragon'})[key]||null; },
 
       isAttackProtected(inst) {
         return !!inst && Number(inst.preventAttackDamageUntilTurn||0)>=this.turn;
@@ -9728,6 +9731,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           for(let n=0;n<Number(ge.discardEnergy);n++){const idx=energyType?s.active.energies.indexOf(energyType):s.active.energies.length-1;if(idx<0)break;s.active.energies.splice(idx,1);}
           this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーを${Number(ge.discardEnergy)}個トラッシュ。`);
         }
+        if(ge.discardAllEnergyType){const type=ge.discardAllEnergyType,before=s.active.energies.length;s.active.energies=s.active.energies.filter(e=>e!==type);const removed=before-s.active.energies.length;if(removed)this.log(`${getCardDisplayName(attC)}のワザ効果：${TYPE_META[type]?.code||type}エネルギーをすべてトラッシュ。`);}
         if(ge.discardAllEnergy){const removed=s.active.energies.length;s.active.energies=[];if(removed)this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをすべてトラッシュ。`);}
         if(ge.discardRandomEnergy&&s.active.energies.length){const index=Math.floor(Math.random()*s.active.energies.length);s.active.energies.splice(index,1);this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをランダムに1個トラッシュ。`);}
         const opponentActiveProtected=this.isAttackProtected(opp.active);
