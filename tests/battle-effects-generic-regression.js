@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const html = fs.readFileSync('index.html', 'utf8');
 
 function method(name) {
-  const start = html.indexOf(name + '(');
+  const start = html.indexOf('\n      ' + name + '(');
   assert.ok(start >= 0, 'missing method: ' + name);
   const end = html.indexOf('\n      },', start);
   assert.ok(end > start, 'could not find method end: ' + name);
