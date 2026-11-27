@@ -7025,6 +7025,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^Once during your turn, (?:if this (?:Pokémon|Pokemon) is in the Active Spot, )?you may make your opponent's Active (?:Pokémon|Pokemon) (Poisoned|Burned|Asleep|Paralyzed|Confused)$/i)))return {action:'applyOpponentStatus',status:m[1],requiresActive:/if this (?:Pokémon|Pokemon) is in the Active Spot/i.test(t)};
         if((m=t.match(/^Once during your turn, (?:(?:if this (?:Pokémon|Pokemon) is in the Active Spot), )?you may flip a coin\. If heads, your opponent's Active (?:Pokémon|Pokemon) is now (Poisoned|Burned|Asleep|Paralyzed|Confused)$/i)))return {action:'applyOpponentStatusIfHeads',status:m[1],requiresActive:/if this (?:Pokémon|Pokemon) is in the Active Spot/i.test(t)};
         if((m=t.match(/^If this (?:Pokémon|Pokemon) is in the Active Spot and is damaged by an attack from your opponent's (?:Pokémon|Pokemon), do (\d+) damage to the Attacking (?:Pokémon|Pokemon)$/i)))return {passive:true,counterDamageOnAttack:Number(m[1]),requiresActive:true};
+        if((m=t.match(/^If this (?:Pokémon|Pokemon) is in the Active Spot and is Knocked Out by damage from an attack from your opponent's (?:Pokémon|Pokemon), do (\d+) damage to the Attacking (?:Pokémon|Pokemon)$/i)))return {passive:true,counterDamageOnKnockout:Number(m[1]),requiresActive:true};
         if(/^This (?:Pokémon|Pokemon) can't be affected by any Special Conditions$/i.test(t))return {passive:true,preventSpecialConditions:true};
         if((m=t.match(/^Whenever you attach a \[([A-Za-z]+)\] Energy from your Energy Zone to this (?:Pokémon|Pokemon), do (\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {passive:true,energyType:typeOf(m[1]),damageOpponentOnEnergyAttach:Number(m[2])};
         if(/^Once during your turn, you may look at the top card of your deck$/i.test(t))return {action:'lookAtTopCard'};
@@ -9453,9 +9454,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         else if(ge.action==='lookAtTopCard'){const top=board.deck?.[0];if(!top){if(side==='player')ui.toast('山札にカードがありません');return false;}const name=getCardDisplayName(CARD_MAP[top]);this.log(`${ability.name}！山札の一番上は${name}。`);if(side==='player')ui.toast(`山札の一番上：${name}`);}
         else if(ge.action==='moveDamageToSelf'&&chosen){const moved=Math.max(0,Number(chosen.inst.maxHp)-Number(chosen.inst.hp));if(!moved)return false;chosen.inst.hp=chosen.inst.maxHp;inst.hp-=moved;this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のダメージ${moved}をこのポケモンに移動！`);if(inst.hp<=0)this.checkKO(side,z,i,true);}
         else if(ge.action==='damageOpponentActive'){opp.active.hp-=Number(ge.amount);this.log(`${ability.name}！相手のバトルポケモンに${Number(ge.amount)}ダメージ！`);if(opp.active.hp<=0)this.checkKO(side==='player'?'opp':'player','active',0,true);}
-        else if(ge.action==='attachEnergySelf'){for(let n=0;n<Math.max(1,Number(ge.energyCount)||1);n++)inst.energies.push(ge.energyType);if(ge.selfDamage>0){inst.hp-=Number(ge.selfDamage);this.checkKO(side,z,i,true);}this.log(`${ability.name}！${getCardDisplayName(card)}にエネルギーを${Number(ge.energyCount)||1}個つけた！`);}
-        else if(ge.action==='attachEnergyActiveType'&&board.active&&CARD_MAP[board.active.cardId]?.type===ge.targetPokemonType){board.active.energies.push(ge.energyType);this.log(`${ability.name}！バトルポケモンに${TYPE_META[ge.energyType]?.code||ge.energyType}エネルギー+1！`);}
-        else if(ge.action==='attachEnergyOwnOne'&&chosen){chosen.inst.energies.push(ge.energyType);this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${TYPE_META[ge.energyType]?.code||ge.energyType}エネルギー+1！`);}
+        else if(ge.action==='attachEnergySelf'){for(let n=0;n<Math.max(1,Number(ge.energyCount)||1);n++){inst.energies.push(ge.energyType);this.nightmareAura(side,inst,ge.energyType);}if(ge.selfDamage>0){inst.hp-=Number(ge.selfDamage);this.checkKO(side,z,i,true);}this.log(`${ability.name}！${getCardDisplayName(card)}にエネルギーを${Number(ge.energyCount)||1}個つけた！`);}
+        else if(ge.action==='attachEnergyActiveType'&&board.active&&CARD_MAP[board.active.cardId]?.type===ge.targetPokemonType){board.active.energies.push(ge.energyType);this.nightmareAura(side,board.active,ge.energyType);this.log(`${ability.name}！バトルポケモンに${TYPE_META[ge.energyType]?.code||ge.energyType}エネルギー+1！`);}
+        else if(ge.action==='attachEnergyOwnOne'&&chosen){chosen.inst.energies.push(ge.energyType);this.nightmareAura(side,chosen.inst,ge.energyType);this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${TYPE_META[ge.energyType]?.code||ge.energyType}エネルギー+1！`);}
         else if(ge.action==='moveBenchEnergyToActive'&&chosen){const ix=chosen.inst.energies.indexOf(ge.energyType);if(ix<0||!board.active)return false;chosen.inst.energies.splice(ix,1);board.active.energies.push(ge.energyType);this.log(`${ability.name}！ベンチからバトルポケモンにエネルギーを移動！`);}
         else if(ge.action==='moveAllBenchEnergyToActive'&&chosen&&board.active){const moved=chosen.inst.energies.filter(e=>e===ge.energyType);chosen.inst.energies=chosen.inst.energies.filter(e=>e!==ge.energyType);moved.forEach(e=>board.active.energies.push(e));if(!moved.length)return false;this.log(`${ability.name}！ベンチからバトルポケモンに${moved.length}個のエネルギーを移動！`);}
         else if(ge.action==='gustOpponent'&&chosen&&opp.active){const old=opp.active;this.clearSpecialConditions(old);opp.active=chosen.inst;opp.bench[chosen.i]=old;this.log(`${ability.name}！相手の${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}をバトル場に呼び出した！`);}
@@ -9775,7 +9776,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           const target=ge.attachEnergyTarget==='bench'?(choice&&choice.bench>=0?s.bench[choice.bench]:null):s.active,energyType=ge.attachEnergyType;
           const hasEnergyType=Array.isArray(s.energyTypes)&&s.energyTypes.includes(energyType);
           if(target&&energyType&&hasEnergyType&&(!ge.attachEnergyPokemonType||CARD_MAP[target.cardId]?.type===ge.attachEnergyPokemonType)){
-            for(let n=0;n<Number(ge.attachEnergyFromZone);n++)target.energies.push(energyType);
+            for(let n=0;n<Number(ge.attachEnergyFromZone);n++){target.energies.push(energyType);this.nightmareAura(side,target,energyType);}
             this.log(`ワザの効果で${getCardDisplayName(CARD_MAP[target.cardId])}に${TYPE_META[energyType]?.code||energyType}エネルギーを${Number(ge.attachEnergyFromZone)}個つけた！`);
           }else if(side==='player'&&!hasEnergyType)ui.toast('このエネルギーはエネルギーゾーンにありません');
         }
@@ -10017,6 +10018,14 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!inst || inst.hp > 0) return false;
 
         const c = CARD_MAP[inst.cardId];
+        const knockoutAbility=c?.ability?.genericEffect;
+        const attackerSide=defSide==='player'?'opp':'player';
+        const knockedOutByOpponentAttack=!!this.resolvingAttackSide&&this.resolvingAttackSide!==defSide;
+        if(z==='active'&&knockedOutByOpponentAttack&&knockoutAbility?.counterDamageOnKnockout>0&&att.active){
+          const counter=Number(knockoutAbility.counterDamageOnKnockout);
+          att.active.hp-=counter;
+          this.log(`${getCardDisplayName(c)}の特性！きぜつ時に攻撃した${getCardDisplayName(CARD_MAP[att.active.cardId])}に${counter}ダメージ！`);
+        }
         if(this.resolvingAttackSide && this.resolvingAttackSide!==defSide){
           const previous=def.lastKOByOpponentAttack;
           const record=previous&&Number(previous.turn)===this.turn?previous:{turn:this.turn,types:[]};
@@ -10027,6 +10036,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         def.discard.push(...(inst.under || []), inst.cardId);
         att.points = Math.min(3, att.points + pts);
         this.log(`${getCardDisplayName(c)}はきぜつ！（${att.name}に ${pts}ポイント！）`);
+        if(knockedOutByOpponentAttack&&z==='active'&&knockoutAbility?.counterDamageOnKnockout>0&&att.active&&att.active.hp<=0&&!this.over){this.checkKO(attackerSide,'active',0);}
 
         if (isBench) {
           def.bench.splice(i, 1);
