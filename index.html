@@ -7101,6 +7101,7 @@ const PACK_CATALOG_DATA = {
       parseGenericAbility(text) {
         const t=String(text||'').replace(/\u00a0/g,' ').trim().replace(/[.!。]$/,'');if(!t)return null;
         let m;
+        if(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, it can evolve during your first turn or the turn you play it$/i.test(t))return {passive:true,allowEvolutionOnOwnFirstTurn:true,allowEvolutionOnTurnPlayed:true};
         if((m=t.match(/^If you have another ([A-Za-z][A-Za-z0-9'♀♂ .-]*) in play, this (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,retreatCostReductionIfAnotherNamedPokemonInPlay:m[1].trim(),retreatCostReduction:Number(m[2])};
         const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
 
@@ -9128,6 +9129,17 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return !(RULES.NO_EVOLVE_ON_OWN_FIRST_TURN && this.isOwnFirstTurn(side));
       },
 
+      canEvolveInstanceNow(side,inst) {
+        if(!inst)return false;
+        const board=side==='player'?this.p:this.o;
+        const ability=CARD_MAP[inst.cardId]?.ability?.genericEffect||{};
+        const abilityTimingAllowsEvolution=inst===board?.active&&(
+          (ability.allowEvolutionOnOwnFirstTurn&&this.isOwnFirstTurn(side))||
+          (ability.allowEvolutionOnTurnPlayed&&Number(inst.turnPlayed)===this.turn)
+        );
+        return !!abilityTimingAllowsEvolution||(this.canEvolveNow(side)&&Number(inst.turnPlayed)<this.turn);
+      },
+
       canUseSupporter(side) {
         const board = side === 'player' ? this.p : this.o,opposingBoard=side==='player'?this.o:this.p;
         const opposingAbility=opposingBoard?.active&&CARD_MAP[opposingBoard.active.cardId]?.ability?.genericEffect;
@@ -9142,7 +9154,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (c.category === 'Pokemon') {
           if (c.stage === 'Basic') return this.p.bench.length < 3;
           const opponentAbility=CARD_MAP[this.o?.active?.cardId]?.ability?.genericEffect;
-          return this.canEvolveNow('player') && [this.p.active, ...this.p.bench].filter(p=>p&&!(p===this.p.active&&opponentAbility?.preventOpponentActiveEvolution)).some(p => isEvolutionFrom(c, CARD_MAP[p.cardId]) && p.turnPlayed < this.turn);
+          return [this.p.active, ...this.p.bench].filter(p=>p&&!(p===this.p.active&&opponentAbility?.preventOpponentActiveEvolution)).some(p => isEvolutionFrom(c, CARD_MAP[p.cardId]) && this.canEvolveInstanceNow('player',p));
         }
         if (c.category === 'Trainer') {
           if(Number(this.p.trainerBlockedUntilTurn||0)>=this.turn) return false;
@@ -9179,9 +9191,13 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             this.log(`${getCardDisplayName(c)}をベンチに出した！`); this.render();
             if (this.isOnlineP2P) this.syncToPeer(false);
           } else {
-            if (!this.canEvolveNow('player')) { ui.toast('最初のターンは進化できません'); return; }
-            const cands = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))].filter(t => t.inst && isEvolutionFrom(c, CARD_MAP[t.inst.cardId]) && t.inst.turnPlayed < this.turn);
-            if (cands.length === 0) { ui.toast('進化できるポケモンが場にいないか、出したばかりです'); return; }
+            const field = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))];
+            const cands = field.filter(t => t.inst && isEvolutionFrom(c, CARD_MAP[t.inst.cardId]) && this.canEvolveInstanceNow('player',t.inst));
+            if (cands.length === 0) {
+              const hasTimingPermission=field.some(t=>t.inst&&this.canEvolveInstanceNow('player',t.inst));
+              ui.toast(hasTimingPermission?'進化できるポケモンが場にいないか、出したばかりです':'最初のターンは進化できません');
+              return;
+            }
             ui.openSelectModal(`${getCardDisplayName(c)} に進化するポケモンを選択`, cands.map(t => `<div onclick="battle.evolve(${idx},'${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-emerald-700 mt-1">進化する</span></div>`).join(''));
           }
           return;
@@ -9197,14 +9213,13 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       evolveCard(side, hIdx, z, i, allowRareCandy = false, deferRenderAndSync = false) {
         const board = side === 'player' ? this.p : this.o;
-        if (!this.canEvolveNow(side)) return false;
         const evoId = board.hand[hIdx], evoC = CARD_MAP[evoId];
         const t = z === 'active' ? board.active : board.bench[i];
         const opposingBoard=side==='player'?this.o:this.p;
         if(z==='active'&&CARD_MAP[opposingBoard?.active?.cardId]?.ability?.genericEffect?.preventOpponentActiveEvolution)return false;
         if (!evoC || !t || evoC.category !== 'Pokemon' || evoC.stage === 'Basic') return false;
         const baseC = CARD_MAP[t.cardId];
-        if (!baseC || t.turnPlayed >= this.turn) return false;
+        if (!baseC || !this.canEvolveInstanceNow(side,t)) return false;
         const directLine = isEvolutionFrom(evoC, baseC);
         const rareCandyLine = allowRareCandy && baseC.stage === 'Basic' && evoC.stage === 'Stage2' &&
           (isKnownRareCandyLine(evoC, baseC) || CARDS.some(c => c.category === 'Pokemon' && c.stage === 'Stage1' &&
@@ -9225,10 +9240,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       },
 
       getRareCandyOptions(side) {
-        if (!this.canEvolveNow(side)) return [];
         const board = side === 'player' ? this.p : this.o;
         const field = [{ z: 'active', i: 0, inst: board.active }, ...board.bench.map((inst, i) => ({ z: 'bench', i, inst }))]
-          .filter(t => t.inst && CARD_MAP[t.inst.cardId]?.stage === 'Basic' && t.inst.turnPlayed < this.turn);
+          .filter(t => t.inst && CARD_MAP[t.inst.cardId]?.stage === 'Basic' && this.canEvolveInstanceNow(side,t.inst));
         const stage2 = [...new Set(board.hand.filter(id => CARD_MAP[id]?.category === 'Pokemon' && CARD_MAP[id].stage === 'Stage2'))];
         const unique = new Map();
         for (const evoId of stage2) {
