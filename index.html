@@ -6898,6 +6898,18 @@ const PACK_CATALOG_DATA = {
       return card.dataVerified;
     }
 
+
+    // Only unlock supplemental Pokémon when their English gameplay record is complete,
+    // every attack has a supported effect, and any Ability has a parsed implementation.
+    function canUnlockSupplementalPokemon(card,category,enDetail,attacks,ability,text,subtype2) {
+      if(category!=='Pokemon'||card?.dataVerified!==true||enDetail?.gameplayFieldsComplete!==true) return false;
+      if(!Array.isArray(attacks)||attacks.length===0) return false;
+      if(!attacks.every(attack=>attack&&String(attack.name||'').trim()&&Array.isArray(attack.cost)&&!attack.unsupportedEffect)) return false;
+      if(ability&&!ability.genericEffect) return false;
+      if(String(text||'').trim()||String(subtype2||'').trim()) return false;
+      return true;
+    }
+
     // Supplemental card data: gameplay + collection rarity, fetched per set only when needed.
     // Source dataset: PocketDecks/pokemon-tcg-pocket-cards v5 (AGPL-3.0-or-later).
     const CARD_DATA_SUPPLEMENT = {
@@ -7308,7 +7320,7 @@ const PACK_CATALOG_DATA = {
             const subtype=/Supporter/i.test(trainerSubtype)?'Supporter':/Tool|Pokémon Tool/i.test(trainerSubtype)?'Tool':/Fossil/i.test(trainerSubtype)?'Fossil':'Item';
             const ability=g.ability?.exists?(()=>{const text=String(g.ability.effect||'');const genericEffect=this.parseGenericAbility(text);return {name:String(g.ability.name||'Ability'),text,genericEffect,passive:!!genericEffect?.passive,unsupported:!genericEffect};})():null;
             const text=String(g.card_text||'');
-            const rawWeakness=String(g.weakness||'').trim(); const normalizedWeakness=!rawWeakness||rawWeakness.toLowerCase()==='none'?'None':(this.typeMap[rawWeakness]||rawWeakness); const enDetail={name:String(g.name||col?.name||record.name),type:category==='Pokemon'?type:'Trainer',category,stage:stageMap[g.stage]||null,evolvesFrom:String(g.evolves_from||''),hp:Number(g.health)||null,weakness:normalizedWeakness,retreat:g.retreat==null||g.retreat===''?null:Number(g.retreat),attacks,ability,text,deckBuilderNr:g.deckBuilderNr,points:g.points,ex:!!g.ex,mega:!!g.mega,source:'PocketDecks Pokémon TCG Pocket Cards v5'};
+            const rawWeakness=String(g.weakness||'').trim(); const normalizedWeakness=!rawWeakness||rawWeakness.toLowerCase()==='none'?'None':(this.typeMap[rawWeakness]||rawWeakness); const gameplayFieldsComplete=category==='Pokemon'&&!!this.typeMap[g.subtype]&&!!stageMap[g.stage]&&Number(g.health)>0&&!!rawWeakness&&g.retreat!=null&&g.retreat!==''; const enDetail={name:String(g.name||col?.name||record.name),type:category==='Pokemon'?type:'Trainer',category,stage:stageMap[g.stage]||null,evolvesFrom:String(g.evolves_from||''),hp:Number(g.health)||null,weakness:normalizedWeakness,retreat:g.retreat==null||g.retreat===''?null:Number(g.retreat),attacks,ability,text,deckBuilderNr:g.deckBuilderNr,points:g.points,ex:!!g.ex,mega:!!g.mega,gameplayFieldsComplete,source:'PocketDecks Pokémon TCG Pocket Cards v5'};
             if(card){
               card.deckBuilderNr=g.deckBuilderNr;
               applySupplementalCardData(card,enDetail,JAPANESE_CARD_DETAILS[record.key]||null,attacks,ability,text);
@@ -7316,7 +7328,7 @@ const PACK_CATALOG_DATA = {
               
               // Reprints with the same deckBuilderNr are the same playable game card.
               // Reuse supported gameplay/effect data so alternate prints aren't left collection-only.
-              const simplePokemon=category==='Pokemon' && attacks.length>0 && attacks.every(a=>!a.unsupportedEffect) && !ability && !text && !g.subtype_2;
+              const playablePokemon=canUnlockSupplementalPokemon(card,category,enDetail,attacks,ability,text,g.subtype_2);
               const gameNumber = g.deckBuilderNr == null ? '' : String(g.deckBuilderNr);
               const playablePeer = gameNumber ? CARDS.find(c => c !== card && !c.collectionOnly &&
                 c.category === 'Pokemon' && String(c.deckBuilderNr ?? c.enDetail?.deckBuilderNr ?? '') === gameNumber) : null;
@@ -7330,7 +7342,7 @@ const PACK_CATALOG_DATA = {
                 card.dataVerificationIssues=[...new Set([...(card.dataVerificationIssues||[]),...(playablePeer.dataVerificationIssues||[])])];
                 card.dataVerified=!!card.dataVerified&&!!playablePeer.dataVerified&&card.dataVerificationIssues.length===0;
                 card.dataSourceLabel=playablePeer.dataSourceLabel||card.dataSourceLabel;
-              }else if(simplePokemon && !unlockedDeckNr.has(gameNumber)){
+              }else if(playablePokemon && !unlockedDeckNr.has(gameNumber)){
                 card.collectionOnly=false; card.detailStatus=JAPANESE_CARD_DETAILS[record.key]?'available':'available-en';
                 if(gameNumber) unlockedDeckNr.add(gameNumber);
               }
