@@ -7802,7 +7802,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         };
         const pulled=[];
         for(let p=0;p<count;p++){
-          const isRarePack=!isDeluxe&&Math.random()<0.0005;
+          const isRarePack=Math.random()<0.0005;
           if(isRarePack){
             let rareWeights=PACK_SLOT_RATES.rareA1;
             if(packId==='a1_mewtwo')rareWeights=PACK_SLOT_RATES.rareA1Mewtwo;
@@ -7816,6 +7816,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             addPulled(choose([{rarities:['C'],weight:17.7},{rarities:['U'],weight:82.3}]));
             addPulled(choose(PACK_SLOT_RATES.deluxe3));
             addPulled(choose([{rarities:['RR'],weight:100}]));
+            if(bonusChance>0&&theme.some(card=>['S','SSR'].includes(packRarity(card)))&&Math.random()<bonusChance){
+              const bonusCard=choose(PACK_SLOT_RATES.bonus);
+              if(bonusCard)addPulled(bonusCard);
+            }
             continue;
           }
           const commonPool=theme.filter(card=>packRarity(card)==='C');
