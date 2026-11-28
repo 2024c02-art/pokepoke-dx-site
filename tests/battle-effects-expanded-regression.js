@@ -40,6 +40,10 @@ const cases=[
 ["During your next turn, this Pokémon can't use Frenzy Plant.","selfCannotUseAttackNextTurn","Frenzy Plant"]
 ];
 for(const [text,key,expected] of cases){const parsed=parse.call(ctx,text);assert.ok(parsed,'unparsed effect: '+text);assert.equal(parsed[key],expected,'wrong parsed value: '+text);}
+const movedActiveEffect=parse.call(ctx,
+  "If this Pokémon moved from your Bench to the Active Spot this turn, this attack does 60 more damage.");
+assert.equal(movedActiveEffect.bonusIfMovedFromBenchToActive,60,
+  'moved-from-Bench damage bonus should parse');
 const psychicDiscardEffect=parse.call(ctx,"This attack does 20 more damage for each [P] Pokémon in your discard pile.");
 assert.equal(psychicDiscardEffect.discardedPokemonType,'Psychic','discarded Pokemon type');
 
@@ -69,6 +73,15 @@ const baseAttack={name:'Base',damage:50,cost:[],genericEffect:null};
 let def={cardId:'targetAbility',hp:100,maxHp:100,energies:[]};
 engine.calcDamagePreview=calc;
 engine.p.supporterUsed=false;
+assert.equal(calc.call(engine,{...attacker,movedToActiveTurn:3},
+  {...baseAttack,genericEffect:movedActiveEffect},def,'player').final,110,
+  'moved-from-Bench bonus applies during the turn it entered the Active Spot');
+assert.equal(calc.call(engine,{...attacker,movedToActiveTurn:2},
+  {...baseAttack,genericEffect:movedActiveEffect},def,'player').final,50,
+  'moved-from-Bench bonus expires after the turn it entered the Active Spot');
+assert.equal(calc.call(engine,attacker,
+  {...baseAttack,genericEffect:movedActiveEffect},def,'player').final,50,
+  'a Pokémon that did not move from the Bench gets no bonus');
 assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfOpponentHasAbility:40}},def,'player').final,90,'ability bonus');
 engine.p.supporterUsed=true;
 assert.equal(calc.call(engine,{...attacker},{...baseAttack,genericEffect:{bonusIfSupporterPlayedThisTurn:50}},def,'player').final,100,'supporter bonus');
@@ -94,6 +107,16 @@ assert.match(html,/c\.subType!=='Supporter' && Number\(s\.itemBlockedUntilTurn\|
 assert.match(html,/c\.subType!=='Supporter'&&Number\(this\.p\.itemBlockedUntilTurn\|\|0\)>=this\.turn/);
 assert.match(html,/itemBlockedUntilTurn: Number\(this\.p\.itemBlockedUntilTurn\|\|0\)/);
 assert.match(html,/trainerBlockedUntilTurn: Number\(this\.p\.trainerBlockedUntilTurn\|\|0\)/);
+assert.match(html,/movedToActiveTurn: null/,'new Pokémon instances start without a Bench-to-Active move');
+assert.match(html,/bonusIfMovedFromBenchToActive/,'damage calculator supports the once-this-turn bonus');
+assert.match(html,/s\.active = s\.bench\.splice\(bi, 1\)\[0\];\s*s\.active\.movedToActiveTurn = this\.turn/,'promotion records the turn');
+assert.match(html,/this\.p\.active = this\.p\.bench\.splice\(bi, 1\)\[0\]; this\.p\.active\.movedToActiveTurn = this\.turn/,'retreat records the turn');
+assert.match(html,/opp\.active=chosen\.inst;opp\.active\.movedToActiveTurn=this\.turn/,'opponent gust records the turn');
+assert.match(html,/board\.active=chosen\.inst;board\.active\.movedToActiveTurn=this\.turn/,'own switch records the turn');
+assert.match(html,/board\.active=inst;board\.active\.movedToActiveTurn=this\.turn/,'self switch records the turn');
+assert.match(html,/s\.active=s\.bench\[choice\.bench\];\s*s\.active\.movedToActiveTurn=this\.turn/,'attack switch records the turn');
+assert.match(html,/def\.active = def\.bench\.shift\(\);\s*def\.active\.movedToActiveTurn = this\.turn/,'automatic KO promotion records the turn');
+assert.match(html,/this\.o\.active=this\.o\.bench\.shift\(\);this\.o\.active\.movedToActiveTurn=this\.turn/,'CPU batch promotion records the turn');
 assert.match(html,/attackDamagePenaltyUntilTurn/);
 assert.match(html,/opponentTrainerLockNextTurn/);
 assert.match(html,/attackFailureOnTailsUntilTurn/);
