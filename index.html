@@ -6778,8 +6778,8 @@ const PACK_CATALOG_DATA = {
           const opponent=/\b(?:your\s+)?opponent['’]s\s+(?:(?:Active|Benched)\s+)?(?:Pokémon|Pokemon)\b/i.test(text);
           return own&&opponent?'both':opponent?'opponent':own?'own':null;
         }
-        const own=/自分の(?:(?:ベンチ|バトル場)(?:にいる|の)?)?ポケモン/.test(text);
-        const opponent=/相手の(?:(?:ベンチ|バトル場)(?:にいる|の)?)?ポケモン/.test(text);
+        const own=/自分の(?:(?:ベンチ|バトル場|バトル)(?:にいる|の)?)?ポケモン/.test(text);
+        const opponent=/相手の(?:(?:ベンチ|バトル場|バトル)(?:にいる|の)?)?ポケモン/.test(text);
         return own&&opponent?'both':opponent?'opponent':own?'own':null;
       };
       const compareEffectSemantics=(label,japanese,english)=>{
