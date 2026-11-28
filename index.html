@@ -7102,7 +7102,7 @@ const PACK_CATALOG_DATA = {
         const t=String(text||'').replace(/\u00a0/g,' ').trim().replace(/[.!。]$/,'');if(!t)return null;
         let m;const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
 
-        if((m=t.match(/^At the beginning of your turn, (?:if this (?:Pokémon|Pokemon) is in the Active Spot, )?put a random \[([A-Za-z]+)\] (?:Pokémon|Pokemon) from your deck into your hand$/i)))return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckPokemonType:typeOf(m[1]),trigger:'turnStart',requiresActive:/if this .*Active Spot/i.test(t),repeatable:true};
+        if((m=t.match(/^At the beginning of your turn, if this (?:Pokémon|Pokemon) is in the Active Spot, put a random \[([A-Za-z]+)\] (?:Pokémon|Pokemon) from your deck into your hand$/i)))return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckPokemonType:typeOf(m[1]),trigger:'turnStart',requiresActive:true};
         const deckSearchText=t.replace(/^Once during your turn, you may\s+/i,'');
         const deckSearchMatch=deckSearchText.match(/^Put (?:a|1) random (.+?) from your deck (into your hand|onto your Bench)$/i);
         if(deckSearchMatch){
