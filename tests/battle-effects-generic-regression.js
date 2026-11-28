@@ -129,6 +129,7 @@ const abilityCases = [
   ["As long as this Pokémon is in the Active Spot, your opponent can't use any Supporter cards from their hand.", 'lockSupporterWhileActive', true],
   ["This Pokémon takes −20 damage from attacks from [Fire] or [Water] Pokémon.", 'passiveDamageReduction', 20],
   ["Each [Grass] Energy attached to your [Grass] Pokémon provides 2 [Grass] Energy. This effect doesn't stack.", 'energyMultiplier', 2],
+  ["Your Active Pokémon has no Retreat Cost.", 'activeRetreatCostZero', true],
   ["If this Pokémon has any Energy attached, it has no Retreat Cost.", 'retreatCostZeroIfHasEnergy', true],
   ["As long as this Pokémon is on your Bench, your Active Basic Pokémon's Retreat Cost is 1 less.", 'activeBasicRetreatCostReduction', 1],
   ["During your first turn, this Pokémon has no Retreat Cost.", 'retreatCostZeroFirstTurn', true],
@@ -290,7 +291,8 @@ const energyCardMap = {
   grassTotem: { type: 'Grass', ability: { genericEffect: { energyMultiplier: 2, energyType: 'Grass', providedEnergyType: 'Grass', pokemonType: 'Grass' } } },
   grassActive: { type: 'Grass', stage: 'Basic', retreat: 2 },
   retreatReducer: { type: 'Colorless', ability: { genericEffect: { activeBasicRetreatCostReduction: 1 } } },
-  energyRetreat: { type: 'Water', retreat: 2, ability: { genericEffect: { retreatCostZeroIfHasEnergy: true } } }
+  energyRetreat: { type: 'Water', retreat: 2, ability: { genericEffect: { retreatCostZeroIfHasEnergy: true } } },
+  activeRetreatAura: { type: 'Grass', ability: { genericEffect: { activeRetreatCostZero: true } } }
 };
 const canPayMethod = method('canPay');
 const canPay = new Function('CARD_MAP', `return ({${canPayMethod}}).canPay;`)(energyCardMap);
@@ -304,6 +306,8 @@ const getRetreatCost = new Function('CARD_MAP', `return ({${retreatMethod}}).get
 const retreatContext = { p: { active: grassActive, bench: [{ cardId: 'retreatReducer' }], retreatDiscount: 0 }, o: {}, turn: 3, isOwnFirstTurn: () => false };
 assert.equal(getRetreatCost.call(retreatContext, 'player', grassActive), 1, 'Benched passive should reduce Active Basic retreat cost');
 assert.equal(getRetreatCost.call(retreatContext, 'player', { cardId: 'energyRetreat', energies: ['Water'] }), 0, 'attached-energy retreat Ability should make retreat free');
+assert.equal(getRetreatCost.call({p:{active:grassActive,bench:[{cardId:'activeRetreatAura'}],retreatDiscount:0},o:{},turn:3}, 'player', grassActive), 0, 'a Benched passive Ability should remove the Active Pokémon retreat cost');
+assert.equal(getRetreatCost.call({p:{active:grassActive,bench:[],retreatDiscount:0},o:{},turn:3}, 'player', grassActive), 2, 'the team Active retreat effect must not remain after its Ability holder leaves play');
 
 const koMap = {
   attacker: { pointValue: 1 },
