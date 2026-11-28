@@ -110,7 +110,7 @@ const payStart=html.indexOf('canPay(inst, cost) {');
 const payEnd=html.indexOf('\n      },',payStart);
 assert.ok(payStart>=0&&payEnd>payStart,'energy payment checker exists');
 const payMethod=html.slice(payStart,payEnd+8);
-const canPay=new Function('return ({'+payMethod+'}).canPay;')();
+const canPay=new Function('CARD_MAP','return ({'+payMethod+'}).canPay;')({});
 const payer={energies:['Fire'],attackCostIncrease:1,attackCostIncreaseUntilTurn:4};
 assert.equal(canPay.call({turn:4},payer,['Fire']),false,'next-turn cost increase enforced');
 assert.equal(canPay.call({turn:5},payer,['Fire']),true,'cost increase expires');
