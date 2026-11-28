@@ -7025,7 +7025,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^Flip a coin for each (?:Pokémon|Pokemon) you have in play\. This attack does (\d+) damage for each heads$/i))) return {coinPerPokemon:true,coinDamagePerHeads:Number(m[1])};
         if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon do [−–-](\d+) damage$/i))) return {defendingAttackDamageReductionNextTurn:Number(m[1])};
         if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon cost (\d+) more, and its Retreat Cost is (\d+) more$/i))) return {defendingAttackCostIncreaseNextTurn:Number(m[1]),defendingRetreatCostIncreaseNextTurn:Number(m[2])};
-        if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon cost (\d+) more \[([A-Za-z]+)\]$/i))) return {defendingAttackCostIncreaseNextTurn:Number(m[1]),defendingAttackCostType:this.energyEffectType(m[2])};
+        if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon cost (\d+)(?: more \[([A-Za-z]+)\]| \[([A-Za-z]+)\] more)$/i))) return {defendingAttackCostIncreaseNextTurn:Number(m[1]),defendingAttackCostType:this.energyEffectType(m[2]||m[3])};
         if(/^During your opponent's next turn, the Defending Pokémon can't attack$/i.test(t)) return {defendingCannotAttackNextTurn:true};
         if(/^If the Defending Pokémon is a Basic Pokémon, it can't attack during your opponent's next turn$/i.test(t)) return {defendingCannotAttackNextTurnIfBasic:true};
         if(/^During your opponent's next turn, if the Defending Pokémon tries to use an attack, your opponent flips a coin\. If tails, that attack doesn't happen$/i.test(t)) return {defendingAttackFailureOnTailsNextTurn:true};
