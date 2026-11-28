@@ -9496,6 +9496,15 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return Math.max(0,damage);
       },
 
+      attackDamageWithActiveWeakness(inst, amount, attackerType=null, attackerIsEx=false, ignoreWeakness=false) {
+        const isActiveTarget=!!inst&&(this.p?.active===inst||this.o?.active===inst);
+        const weakness=CARD_MAP[inst?.cardId]?.weakness;
+        const isWeak=!!(isActiveTarget&&!ignoreWeakness&&Number(amount)>0&&weakness&&weakness!=='None'&&weakness===attackerType);
+        const rawDamage=Math.max(0,Number(amount)||0)+(isWeak?20:0);
+        const final=this.attackDamageAfterDefenses(inst,rawDamage,attackerType,attackerIsEx);
+        return {final,isWeak:isWeak&&final>0};
+      },
+
       calcDamagePreview(attInst, atk, defInst, side) {
         const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
         const attC = CARD_MAP[attInst.cardId], defC = CARD_MAP[defInst.cardId];
@@ -9700,13 +9709,13 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if(!board.active||board.active.hp>=board.active.maxHp){if(side==='player')ui.toast('バトルポケモンのHPは満タンです');return false;}
           board.active.hp=Math.min(board.active.maxHp,board.active.hp+Number(ge.amount));this.log(`${ability.name}！バトルポケモンのHPを${Number(ge.amount)}回復！`);
         }else if(ge.action==='healOwnOne'&&chosen){chosen.inst.hp=Math.min(chosen.inst.maxHp,chosen.inst.hp+Number(ge.amount));this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のHPを${Number(ge.amount)}回復！`);}
-        else if(ge.action==='damageOpponentOne'&&chosen){chosen.inst.hp-=Number(ge.amount);this.log(`${ability.name}！相手の${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${Number(ge.amount)}ダメージ！`);if(chosen.inst.hp<=0)this.checkKO(side==='player'?'opp':'player',chosen.z,chosen.i,true);}
+        else if(ge.action==='damageOpponentOne'&&chosen){chosen.inst.hp-=Number(ge.amount);this.log(`${ability.name}！相手の${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${Number(ge.amount)}ダメージ！`);if(chosen.inst.hp<=0)this.checkKO(side==='player'?'opp':'player',chosen.z,chosen.i,chosen.z==='bench');}
         else if(ge.action==='moveActiveDamageToSelf'){
           const amount=Math.min(Math.max(0,Number(ge.amount)||0),Math.max(0,board.active.maxHp-board.active.hp));
           if(amount<=0)return false;
           board.active.hp+=amount;inst.hp-=amount;
           this.log(`${ability.name}！バトルポケモンから${amount}ダメージを移動した！`);
-          if(inst.hp<=0)this.checkKO(side,'bench',i,true);
+          if(inst.hp<=0)this.checkKO(side,z,i,z==='bench');
         }
         else if(ge.action==='removeRandomActiveSpecialCondition'){
           const active=board.active;
@@ -9748,8 +9757,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         else if(ge.action==='searchRandomCardInDeck'){if(!this.resolveRandomDeckSearch(side,ge,ability.name))return false;}
         else if(ge.action==='discardTopOpponentDeck'){if(!opp.deck.length){if(side==='player')ui.toast('相手の山札にカードがありません');return false;}opp.discard.push(opp.deck.shift());this.log(`${ability.name}！相手の山札の一番上のカードをトラッシュ！`);}
         else if(ge.action==='lookAtTopCard'){const top=board.deck?.[0];if(!top){if(side==='player')ui.toast('山札にカードがありません');return false;}const name=getCardDisplayName(CARD_MAP[top]);this.log(`${ability.name}！山札の一番上は${name}。`);if(side==='player')ui.toast(`山札の一番上：${name}`);}
-        else if(ge.action==='moveDamageToSelf'&&chosen){const moved=Math.max(0,Number(chosen.inst.maxHp)-Number(chosen.inst.hp));if(!moved)return false;chosen.inst.hp=chosen.inst.maxHp;inst.hp-=moved;this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のダメージ${moved}をこのポケモンに移動！`);if(inst.hp<=0)this.checkKO(side,z,i,true);}
-        else if(ge.action==='damageOpponentActive'){opp.active.hp-=Number(ge.amount);this.log(`${ability.name}！相手のバトルポケモンに${Number(ge.amount)}ダメージ！`);if(opp.active.hp<=0)this.checkKO(side==='player'?'opp':'player','active',0,true);}
+        else if(ge.action==='moveDamageToSelf'&&chosen){const moved=Math.max(0,Number(chosen.inst.maxHp)-Number(chosen.inst.hp));if(!moved)return false;chosen.inst.hp=chosen.inst.maxHp;inst.hp-=moved;this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のダメージ${moved}をこのポケモンに移動！`);if(inst.hp<=0)this.checkKO(side,z,i,z==='bench');}
+        else if(ge.action==='damageOpponentActive'){opp.active.hp-=Number(ge.amount);this.log(`${ability.name}！相手のバトルポケモンに${Number(ge.amount)}ダメージ！`);if(opp.active.hp<=0)this.checkKO(side==='player'?'opp':'player','active',0,false);}
         else if(ge.action==='attachEnergySelf'){for(let n=0;n<Math.max(1,Number(ge.energyCount)||1);n++){inst.energies.push(ge.energyType);this.nightmareAura(side,inst,ge.energyType);}if(ge.selfDamage>0){inst.hp-=Number(ge.selfDamage);this.checkKO(side,z,i,true);}this.log(`${ability.name}！${getCardDisplayName(card)}にエネルギーを${Number(ge.energyCount)||1}個つけた！`);}
         else if(ge.action==='attachEnergyActiveType'&&board.active&&CARD_MAP[board.active.cardId]?.type===ge.targetPokemonType){board.active.energies.push(ge.energyType);this.nightmareAura(side,board.active,ge.energyType);this.log(`${ability.name}！バトルポケモンに${TYPE_META[ge.energyType]?.code||ge.energyType}エネルギー+1！`);}
         else if(ge.action==='attachEnergyOwnOne'&&chosen){chosen.inst.energies.push(ge.energyType);this.nightmareAura(side,chosen.inst,ge.energyType);this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${TYPE_META[ge.energyType]?.code||ge.energyType}エネルギー+1！`);}
@@ -10206,10 +10215,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           const target=choice.targetZone==='active'?opp.active:opp.bench[choice.targetIndex];
           if(target){
             const targetRawDamage=ge.opponentPokemonDamagePerEnergy>0?Number(ge.opponentPokemonDamagePerEnergy)*(target.energies?.length||0):Number(ge.opponentPokemonDamage);
-            const extraDamage=this.attackDamageAfterDefenses(target,targetRawDamage,attC.type,attC.isEx);
+            const extraResult=this.attackDamageWithActiveWeakness(target,targetRawDamage,attC.type,attC.isEx,!!ge.ignoreWeakness);
+            const extraDamage=extraResult.final;
             target.hp-=extraDamage;
-            if(choice.targetZone==='active'&&extraDamage>0) this.showDmg(side==='player'?'opp-active':'player-active',extraDamage,false);
-            this.log(`ワザ効果！${getCardDisplayName(CARD_MAP[target.cardId])}に${extraDamage}ダメージ！`);
+            if(choice.targetZone==='active'&&extraDamage>0) this.showDmg(side==='player'?'opp-active':'player-active',extraDamage,extraResult.isWeak);
+            this.log(`ワザ効果！${getCardDisplayName(CARD_MAP[target.cardId])}に${extraDamage}ダメージ${extraResult.isWeak?'（弱点+20！）':''}！`);
           }
         }
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatuses) ge.opponentStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
@@ -10315,9 +10325,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             if(!targets.length) break;
             const target=targets[Math.floor(Math.random()*targets.length)];
             const targetCard=CARD_MAP[target.inst.cardId];
-            const isWeak=!!(targetCard?.weakness&&targetCard.weakness!=='None'&&targetCard.weakness===attC.type);
-            const rawDamage=baseDamage+(isWeak?20:0);
-            const amount=this.isAttackProtected(target.inst)?0:this.attackDamageAfterDefenses(target.inst,rawDamage,attC.type,attC.isEx);
+            const damageResult=this.attackDamageWithActiveWeakness(target.inst,baseDamage,attC.type,attC.isEx,!!ge.ignoreWeakness);
+            const isWeak=damageResult.isWeak;
+            const amount=damageResult.final;
             target.inst.hp-=amount;
             hitTotal++;
             if(target.zone==='active'&&amount>0){
@@ -10405,6 +10415,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       checkKO(defSide, z, i, isBench = false) {
         if (this.over) return false;
+        // The actual board zone is authoritative; never trust a stale isBench flag.
+        isBench = z === 'bench';
         const def = defSide === 'player' ? this.p : this.o;
         const att = defSide === 'player' ? this.o : this.p;
         const inst = z === 'active' ? def.active : def.bench[i];
