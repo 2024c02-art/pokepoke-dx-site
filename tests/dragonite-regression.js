@@ -7,5 +7,7 @@ assert.match(html,/if\(ge\.randomOpponentPokemonDamage>0\)/);
 assert.match(html,/target\.inst\.hp>0/);
 assert.match(html,/attackDamageWithActiveWeakness\(target\.inst,baseDamage,attC\.type,attC\.isEx,!!ge\.ignoreWeakness\)/);
 assert.match(html,/りゅうせいぐん/);
-assert.match(html,/simplePokemon=category==='Pokemon'.*attacks\.every\(a=>!a\.unsupportedEffect\)/);
+assert.match(html,/function canUnlockSupplementalPokemon/);
+assert.match(html,/const playablePokemon=canUnlockSupplementalPokemon\\(card,category,enDetail,attacks,ability,text,g\\.subtype_2\\)/);
+assert.match(html,/if\\(ability&&!ability\\.genericEffect\\) return false/);
 console.log('Genetic Apex Dragonite regression checks passed.');
