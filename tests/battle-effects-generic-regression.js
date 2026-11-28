@@ -34,6 +34,14 @@ parserContext.parseGenericEffect = parseAttack;
 
 const attackCases = [
   ["Flip a coin. If heads, the Defending Pokémon can't attack during your opponent's next turn.", 'defendingCannotAttackNextTurnIfHeads', true],
+  ["Flip a coin for each Energy attached to this Pokémon. This attack does 50 damage for each heads.", 'coinPerEnergy', true],
+  ["Flip a coin for each [Metal] Energy attached to this Pokémon. This attack does 50 damage for each heads.", 'coinPerEnergyType', 'Metal'],
+  ["Discard a random Energy from among the Energy attached to all Pokémon (both yours and your opponent's).", 'discardRandomEnergyFromAll', 1],
+  ["Discard 2 random Energy from among the Energy attached to all of your Pokémon.", 'discardRandomEnergyFromOwn', 2],
+  ["Discard a random Energy from both Active Pokémon.", 'discardRandomEnergyFromActives', 1],
+  ["This attack does 20 damage for each Energy attached to all of your opponent's Pokémon.", 'damagePerOpponentEnergyInPlay', 20],
+  ["This attack does 20 damage to 1 of your opponent's Pokémon for each Energy attached to that Pokémon.", 'opponentPokemonDamagePerEnergy', 20],
+  ["This attack also does 20 damage to each of your opponent's Benched Pokémon that has any Energy attached.", 'benchRequiresEnergy', true],
   ["Put 1 random [Grass] Pokémon from your deck into your hand.", 'searchDeckPokemonType', 'Grass'],
   ["Put 1 random Basic Pokémon from your deck onto your Bench.", 'searchDeckStage', 'Basic'],
   ["Discard a random card from your opponent's hand.", 'discardOpponentRandomHand', 1],
@@ -218,6 +226,10 @@ assert.match(html, /this\.nightmareAura\(side,target,energyType\)/, 'attack Ener
 
 
 assert.match(html, /if\(ge\.searchDeckTarget\)this\.resolveRandomDeckSearch/);
+assert.match(html, /coinPerEnergy\?Math\.max/);
+assert.match(html, /discardRandomEnergyFromAll/);
+assert.match(html, /damagePerOpponentEnergyInPlay/);
+assert.match(html, /ge\.benchRequiresEnergy/);
 assert.match(html, /coinThenDiscardOpponentRandomHand/);
 assert.match(html, /opponentStatusesIfTails/);
 assert.match(html, /selfCannotAttackNextTurnIfTails/);
