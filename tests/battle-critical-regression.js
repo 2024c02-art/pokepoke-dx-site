@@ -148,6 +148,7 @@ context = makeKOContext(
   [{ cardId: 'backup', hp: 100, maxHp: 100, under: [] }]
 );
 cardMap.victim.ability = { genericEffect: { counterDamageOnKnockout: 30 } };
+context.resolvingAttackSide = 'player';
 context.p.active.hp = 20;
 context.endMatch = function(winner) { this.over = true; this.winner = winner; };
 resolveKO.call(context, 'opp', 'active', 0, false);
