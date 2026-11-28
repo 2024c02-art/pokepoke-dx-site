@@ -122,4 +122,48 @@ assert.match(html,/attackCostIncreaseUntilTurn/);
 assert.match(html,/defendingAttackCostIncreaseNextTurn/);
 assert.match(html,/defendingRetreatCostIncreaseNextTurn/);
 
+
+const abilityParserStart=html.indexOf('parseGenericAbility(text) {');
+const abilityParserEnd=html.indexOf('\\n      },',abilityParserStart);
+assert.ok(abilityParserStart>=0&&abilityParserEnd>abilityParserStart,'generic Ability parser exists');
+const parseAbility=new Function('return ({'+html.slice(abilityParserStart,abilityParserEnd+8)+'}).parseGenericAbility;')();
+const retreatEffect=parseAbility.call(ctx,"If you have another Beldum in play, this Pokémon's Retreat Cost is 2 less.");
+assert.equal(retreatEffect.retreatCostReductionIfAnotherNamedPokemonInPlay,'Beldum','named Pokémon retreat reduction target');
+assert.equal(retreatEffect.retreatCostReduction,2,'named Pokémon retreat reduction amount');
+
+const retreatCards={
+  metang:{
+    name:'Metang',retreat:3,
+    ability:{genericEffect:retreatEffect}
+  },
+  beldum:{name:'Beldum',retreat:1},
+  beldumWithAbility:{name:'Beldum',retreat:1,ability:{genericEffect:retreatEffect}}
+};
+const hasPokemonNamed=new Function('CARD_MAP','return ({'+html.slice(
+  html.indexOf('hasPokemonNamed(side,name,excludeInst=null) {'),
+  html.indexOf('\\n      },',html.indexOf('hasPokemonNamed(side,name,excludeInst=null) {'))+8
+)+'}).hasPokemonNamed;')(retreatCards);
+const getEffectiveRetreatCost=new Function('CARD_MAP','return ({'+html.slice(
+  html.indexOf('getEffectiveRetreatCost(side,inst) {'),
+  html.indexOf('\\n      },',html.indexOf('getEffectiveRetreatCost(side,inst) {'))+8
+)+'}).getEffectiveRetreatCost;')(retreatCards);
+const metangInstance={cardId:'metang',energies:[],retreatCostIncreaseUntilTurn:0};
+const beldumInstance={cardId:'beldum',energies:[]};
+const retreatContext={
+  turn:3,
+  p:{active:metangInstance,bench:[],retreatDiscount:0},
+  o:{active:null,bench:[]},
+  hasPokemonNamed(...args){return hasPokemonNamed.call(this,...args);},
+  isOwnFirstTurn(){return false;}
+};
+assert.equal(getEffectiveRetreatCost.call(retreatContext,'player',metangInstance),3,
+  'retreat cost remains unchanged without another Beldum');
+retreatContext.p.bench=[beldumInstance];
+assert.equal(getEffectiveRetreatCost.call(retreatContext,'player',metangInstance),1,
+  'another Beldum reduces the holder retreat cost by two');
+retreatContext.p.active={cardId:'beldumWithAbility',energies:[]};
+retreatContext.p.bench=[];
+assert.equal(getEffectiveRetreatCost.call(retreatContext,'player',retreatContext.p.active),1,
+  'the Ability holder itself must not count as another Beldum');
+
 console.log('All expanded battle-effect regression checks passed.');
