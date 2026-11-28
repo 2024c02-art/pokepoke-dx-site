@@ -6771,9 +6771,22 @@ const PACK_CATALOG_DATA = {
         if(/(?:相手|自分)のバトルポケモン|(?:相手|自分)のバトル場のポケモン|ワザを受けたポケモン/.test(text))return 'active';
         return null;
       };
+      const effectTargetSide=(value,language)=>{
+        const text=normalText(value);
+        if(language==='en'){
+          const own=/\byour\s+(?:(?:Active|Benched)\s+)?(?:Pokémon|Pokemon)\b/i.test(text);
+          const opponent=/\b(?:your\s+)?opponent['’]s\s+(?:(?:Active|Benched)\s+)?(?:Pokémon|Pokemon)\b/i.test(text);
+          return own&&opponent?'both':opponent?'opponent':own?'own':null;
+        }
+        const own=/自分の(?:(?:ベンチ|バトル場)(?:にいる|の)?)?ポケモン/.test(text);
+        const opponent=/相手の(?:(?:ベンチ|バトル場)(?:にいる|の)?)?ポケモン/.test(text);
+        return own&&opponent?'both':opponent?'opponent':own?'own':null;
+      };
       const compareEffectSemantics=(label,japanese,english)=>{
         const jpZone=effectTargetZone(japanese,'ja'), enZone=effectTargetZone(english,'en');
         if(jpZone!==enZone&&(jpZone||enZone))conflicts.push(label+'対象範囲'+(!jpZone||!enZone?'要確認':''));
+        const jpSide=effectTargetSide(japanese,'ja'), enSide=effectTargetSide(english,'en');
+        if(jpSide!==enSide&&(jpSide||enSide))conflicts.push(label+'対象プレイヤー'+(!jpSide||!enSide?'要確認':''));
       };
       const normalizedDamage=value=>normalText(value).replace(/[×✕]/g,'x').replace(/\s+/g,'').toLowerCase();
       const compareCosts=(label,japaneseCost,sourceCost)=>{
@@ -9787,7 +9800,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         else if(ge.action==='lookAtTopCard'){const top=board.deck?.[0];if(!top){if(side==='player')ui.toast('山札にカードがありません');return false;}const name=getCardDisplayName(CARD_MAP[top]);this.log(`${ability.name}！山札の一番上は${name}。`);if(side==='player')ui.toast(`山札の一番上：${name}`);}
         else if(ge.action==='moveDamageToSelf'&&chosen){const moved=Math.max(0,Number(chosen.inst.maxHp)-Number(chosen.inst.hp));if(!moved)return false;chosen.inst.hp=chosen.inst.maxHp;inst.hp-=moved;this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のダメージ${moved}をこのポケモンに移動！`);if(inst.hp<=0)this.checkKO(side,z,i,z==='bench');}
         else if(ge.action==='damageOpponentActive'){opp.active.hp-=Number(ge.amount);this.log(`${ability.name}！相手のバトルポケモンに${Number(ge.amount)}ダメージ！`);if(opp.active.hp<=0)this.checkKO(side==='player'?'opp':'player','active',0,false);}
-        else if(ge.action==='attachEnergySelf'){for(let n=0;n<Math.max(1,Number(ge.energyCount)||1);n++){inst.energies.push(ge.energyType);this.nightmareAura(side,inst,ge.energyType);}if(ge.selfDamage>0){inst.hp-=Number(ge.selfDamage);this.checkKO(side,z,i,true);}this.log(`${ability.name}！${getCardDisplayName(card)}にエネルギーを${Number(ge.energyCount)||1}個つけた！`);}
+        else if(ge.action==='attachEnergySelf'){for(let n=0;n<Math.max(1,Number(ge.energyCount)||1);n++){inst.energies.push(ge.energyType);this.nightmareAura(side,inst,ge.energyType);}if(ge.selfDamage>0){inst.hp-=Number(ge.selfDamage);this.checkKO(side,z,i,z==='bench');}this.log(`${ability.name}！${getCardDisplayName(card)}にエネルギーを${Number(ge.energyCount)||1}個つけた！`);}
         else if(ge.action==='attachEnergyActiveType'&&board.active&&CARD_MAP[board.active.cardId]?.type===ge.targetPokemonType){board.active.energies.push(ge.energyType);this.nightmareAura(side,board.active,ge.energyType);this.log(`${ability.name}！バトルポケモンに${TYPE_META[ge.energyType]?.code||ge.energyType}エネルギー+1！`);}
         else if(ge.action==='attachEnergyOwnOne'&&chosen){chosen.inst.energies.push(ge.energyType);this.nightmareAura(side,chosen.inst,ge.energyType);this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${TYPE_META[ge.energyType]?.code||ge.energyType}エネルギー+1！`);}
         else if(ge.action==='moveBenchEnergyToActive'&&chosen){const ix=chosen.inst.energies.indexOf(ge.energyType);if(ix<0||!board.active)return false;chosen.inst.energies.splice(ix,1);board.active.energies.push(ge.energyType);this.log(`${ability.name}！ベンチからバトルポケモンにエネルギーを移動！`);}
