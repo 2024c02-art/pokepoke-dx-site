@@ -9299,7 +9299,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if(side!=='player')useEffect=true;
           else{
             this.actionLocked=true;
-            const html="<div class=\\"grid grid-cols-2 gap-2\\"><button class=\\"p-3 rounded-xl bg-sky-600 text-white font-black\\" onclick=\\"setTimeout(()=>battle.resolveOnEvolveAbility('player','"+z+"',"+i+",true),0);ui.closeSelectModal();\\">使う</button><button class=\\"p-3 rounded-xl bg-slate-100 text-slate-700 font-black\\" onclick=\\"setTimeout(()=>battle.resolveOnEvolveAbility('player','"+z+"',"+i+",false),0);ui.closeSelectModal();\\">使わない</button></div>";
+            const html='<div class="grid grid-cols-2 gap-2"><button class="p-3 rounded-xl bg-sky-600 text-white font-black" onclick="setTimeout(()=>battle.resolveOnEvolveAbility(&quot;player&quot;,&quot;'+z+'&quot;,'+i+',true),0);ui.closeSelectModal();">使う</button><button class="p-3 rounded-xl bg-slate-100 text-slate-700 font-black" onclick="setTimeout(()=>battle.resolveOnEvolveAbility(&quot;player&quot;,&quot;'+z+'&quot;,'+i+',false),0);ui.closeSelectModal();">使わない</button></div>';
             ui.openSelectModal((ability?.name||'特性')+'を使いますか？',html,true);
             return true;
           }
@@ -9316,7 +9316,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if(targetZone!==null&&!chosen)return false;
           if(!chosen&&side==='player'&&healTargets.length>1){
             this.actionLocked=true;
-            const html=healTargets.map(x=>"<div class=\\"p-3 rounded-xl border bg-slate-50 cursor-pointer\\" onclick=\\"setTimeout(()=>battle.resolveOnEvolveAbility('player','"+z+"',"+i+",true,'"+x.z+"',"+x.i+"),0);ui.closeSelectModal();\\">"+ui.renderMiniCard(x.inst.cardId)+"<div class=\\"text-center text-xs font-bold\\">"+(x.z==='active'?'バトル場':'ベンチ')+' HP '+x.inst.hp+'/'+x.inst.maxHp+"</div></div>").join('');
+            const html=healTargets.map(x=>'<div class="p-3 rounded-xl border bg-slate-50 cursor-pointer" onclick="setTimeout(()=>battle.resolveOnEvolveAbility(&quot;player&quot;,&quot;'+z+'&quot;,'+i+',true,&quot;'+x.z+'&quot;,'+x.i+'),0);ui.closeSelectModal();">'+ui.renderMiniCard(x.inst.cardId)+'<div class="text-center text-xs font-bold">'+(x.z==='active'?'バトル場':'ベンチ')+' HP '+x.inst.hp+'/'+x.inst.maxHp+'</div></div>').join('');
             ui.openSelectModal('HPを回復するポケモンを選択',html,true);return true;
           }
           if(!chosen)chosen=healTargets.reduce((a,b)=>(b.inst.maxHp-b.inst.hp)>(a.inst.maxHp-a.inst.hp)?b:a,healTargets[0]);
@@ -9326,7 +9326,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if(targetZone!==null&&!chosen)return false;
           if(!chosen&&side==='player'&&supporterTargets.length>1){
             this.actionLocked=true;
-            const html=supporterTargets.map(x=>"<div class=\\"p-3 rounded-xl border bg-slate-50 cursor-pointer\\" onclick=\\"setTimeout(()=>battle.resolveOnEvolveAbility('player','"+z+"',"+i+",true,'discard',"+x.index+"),0);ui.closeSelectModal();\\">"+ui.renderMiniCard(x.id)+"<div class=\\"text-center text-xs font-bold\\">"+escapeHtml(getCardDisplayName(CARD_MAP[x.id]))+"</div></div>").join('');
+            const html=supporterTargets.map(x=>'<div class="p-3 rounded-xl border bg-slate-50 cursor-pointer" onclick="setTimeout(()=>battle.resolveOnEvolveAbility(&quot;player&quot;,&quot;'+z+'&quot;,'+i+',true,&quot;discard&quot;,'+x.index+'),0);ui.closeSelectModal();">'+ui.renderMiniCard(x.id)+'<div class="text-center text-xs font-bold">'+escapeHtml(getCardDisplayName(CARD_MAP[x.id]))+'</div></div>').join('');
             ui.openSelectModal('手札に戻すサポートを選択',html,true);return true;
           }
           if(!chosen)chosen=supporterTargets[0];
