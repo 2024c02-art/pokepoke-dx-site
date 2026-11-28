@@ -9409,7 +9409,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         t.under = [...(t.under || []), t.cardId]; t.cardId = evoId; t.maxHp = evoC.hp; t.hp = Math.max(10, evoC.hp - dmg); t.turnPlayed = this.turn; t.abilityUsed = false;
         t.status = null; t.statusEffects = []; t.statusUntilTurn = 0; t.temporaryFlags = {};
         const evolutionAbility=evoC.ability?.genericEffect;
-        if(evolutionAbility?.trigger==='onEvolve')setTimeout(()=>{if(!this.over)this.resolveOnEvolveAbility(side,z,i,null);},0);
+        if(evolutionAbility?.action==='attachEnergyOnEvolveToActiveType'){
+          const target=board.active;
+          if(target&&board.energyTypes?.includes(evolutionAbility.energyType)&&CARD_MAP[target.cardId]?.type===evolutionAbility.targetPokemonType){
+            target.energies.push(evolutionAbility.energyType);
+            this.nightmareAura(side,target,evolutionAbility.energyType);
+            this.log(getCardDisplayName(evoC)+'の特性！バトルポケモンに'+(TYPE_META[evolutionAbility.energyType]?.code||evolutionAbility.energyType)+'エネルギーをつけた！');
+          }
+        }else if(evolutionAbility?.trigger==='onEvolve'){
+          setTimeout(()=>{if(!this.over)this.resolveOnEvolveAbility(side,z,i,null);},0);
+        }
         sound.rarePull(); battleVfx.triggerBurst(side, '#0ea5e9', '#a855f7');
         this.showCutin('進化！', `${getCardDisplayName(evoC)} に進化！`);
         this.log(`${getCardDisplayName(evoC)}に進化した！`);
