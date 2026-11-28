@@ -59,9 +59,9 @@ checkKO.call(koContext,'opp','active',0,false);
 assert.equal(koContext.p.points,1,'KO counter damage should award the defender a point for knocking out the attacker');
 assert.equal(koContext.o.points,1,'the original attack KO should still award its point');
 assert.equal(koContext.p.bench.length,1,'Active KO must not delete the first Bench Pokémon');
-assert.equal(koContext.o.bench.length,1,'the opposing Bench remains intact after the Active KO');
+assert.equal(koContext.o.bench.length,0,'the CPU should move its first Bench Pokémon into the Active Spot');
 assert.equal(koContext.p.active,null,'the attacker Active Pokémon should be Knocked Out');
-assert.equal(koContext.o.active,koContext.o.bench[0],'the CPU should promote from its Bench after its Active is Knocked Out');
+assert.equal(koContext.o.active.cardId,'backup','the CPU should promote its Bench Pokémon after its Active is Knocked Out');
 
 assert.match(html,/this\.checkKO\(side,'active',0\);/,'counterDamageOnAttack must invoke Active KO handling, not Bench KO handling');
 assert.match(html,/resolveMultiAttackBenchChoice\(\)/,'multi-Bench UI resolver must be wired');
