@@ -7020,6 +7020,16 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^Flip (\d+) coins?\. For each heads, a card is chosen at random from your opponent's hand\. Your opponent reveals that card and shuffles it into their deck$/i))) return {coinCount:Number(m[1]),coinShuffleOpponentRandomHandPerHeads:true};
         if((m=t.match(/^Flip a coin\. If heads, your opponent's Active (?:Pokémon|Pokemon) is now (Poisoned|Burned|Asleep|Paralyzed|Confused)\. If tails, your opponent's Active (?:Pokémon|Pokemon) is now (Poisoned|Burned|Asleep|Paralyzed|Confused)$/i))) return {coinCount:1,opponentStatusesIfHeads:[m[1]],opponentStatusesIfTails:[m[2]]};
         if(/^Flip a coin\. If tails, during your next turn, this (?:Pokémon|Pokemon) can't attack$/i.test(t)) return {coinCount:1,selfCannotAttackNextTurnIfTails:true};
+        if((m=t.match(/^Flip a coin for each Energy attached to this (?:Pokémon|Pokemon)\. This attack does (\d+) damage for each heads$/i)))return {coinPerEnergy:true,coinDamagePerHeads:Number(m[1])};
+        if((m=t.match(/^Flip a coin for each \[([A-Za-z]+)\] Energy attached to this (?:Pokémon|Pokemon)\. This attack does (\d+) damage for each heads$/i)))return {coinPerEnergyType:energyTypeFromText(m[1]),coinDamagePerHeads:Number(m[2])};
+        if((m=t.match(/^Discard (?:a|1) random Energy from among the Energy attached to all (?:Pokémon|Pokemon) \(both yours and your opponent's\)$/i)))return {discardRandomEnergyFromAll:1};
+        if((m=t.match(/^Discard (\d+) random Energy from among the Energy attached to all of your (?:Pokémon|Pokemon)$/i)))return {discardRandomEnergyFromOwn:Number(m[1])};
+        if(/^Discard a random Energy from both Active (?:Pokémon|Pokemon)$/i.test(t))return {discardRandomEnergyFromActives:1};
+        if((m=t.match(/^This attack does (\d+) damage for each Energy attached to all of your opponent's (?:Pokémon|Pokemon)$/i)))return {damagePerOpponentEnergyInPlay:Number(m[1])};
+        if((m=t.match(/^This attack does (\d+) damage for each Energy attached to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {damagePerOpponentEnergyActive:Number(m[1])};
+        if((m=t.match(/^This attack does (\d+) damage to 1 of your opponent's (?:Pokémon|Pokemon) for each Energy attached to that (?:Pokémon|Pokemon)$/i)))return {opponentPokemonDamagePerEnergy:Number(m[1])};
+        if((m=t.match(/^This attack also does (\d+) damage to each of your opponent's Benched (?:Pokémon|Pokemon) that has any Energy attached$/i)))return {benchAllDamage:Number(m[1]),benchRequiresEnergy:true};
+        if((m=t.match(/^If this (?:Pokémon|Pokemon) has (\d+) or more different types of Energy attached, this attack does (\d+) more damage$/i)))return {minUniqueEnergyTypes:Number(m[1]),bonusIfUniqueEnergyTypes:Number(m[2])};
         if((m=t.match(/^This attack does (\d+) more damage for each of your Benched ([A-Za-z][A-Za-z0-9'♀♂ .-]*)$/i)))return {bonusPerNamedBenchPokemon:Number(m[1]),benchPokemonNames:m[2].split(/\s+or\s+/i).map(x=>x.trim())};
         if((m=t.match(/^If ([A-Za-z][A-Za-z0-9'♀♂ .-]*) is on your Bench, this attack does (\d+) more damage$/i)))return {bonusIfBenchPokemonName:m[1].trim(),bonusIfBenchPokemonNameDamage:Number(m[2])};
         if((m=t.match(/^If any of your Benched (?:Pokémon|Pokemon) have damage on them, this attack does (\d+) more damage$/i)))return {bonusIfAnyBenchDamaged:Number(m[1])};
@@ -9485,6 +9495,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(atk.genericEffect?.bonusPerOpponentPoint) dmg += Number(atk.genericEffect.bonusPerOpponentPoint||0)*Number(opp.points||0);
         if(atk.genericEffect?.bonusPerEnergy) dmg += Number(atk.genericEffect.bonusPerEnergy||0)*attInst.energies.length;
         if(atk.genericEffect?.bonusPerOpponentEnergy) dmg += Number(atk.genericEffect.bonusPerOpponentEnergy||0)*opp.active.energies.length;
+        if(atk.genericEffect?.damagePerOpponentEnergyActive) dmg += Number(atk.genericEffect.damagePerOpponentEnergyActive||0)*opp.active.energies.length;
+        if(atk.genericEffect?.damagePerOpponentEnergyInPlay) dmg += Number(atk.genericEffect.damagePerOpponentEnergyInPlay||0)*[opp.active,...opp.bench].filter(Boolean).reduce((sum,p)=>sum+(p.energies?.length||0),0);
+        if(atk.genericEffect?.minUniqueEnergyTypes&&new Set(attInst.energies).size>=Number(atk.genericEffect.minUniqueEnergyTypes))dmg+=Number(atk.genericEffect.bonusIfUniqueEnergyTypes||0);
         if(atk.genericEffect?.bonusPerBenchPokemon) { const type=this.energyEffectType(atk.genericEffect.benchPokemonType); const benchCount=s.bench.filter(b=>!type||CARD_MAP[b.cardId]?.type===type).length; dmg += Number(atk.genericEffect.bonusPerBenchPokemon||0)*benchCount; }
         if(atk.genericEffect?.bonusPerDamageCounter) dmg += Number(atk.genericEffect.bonusPerDamageCounter||0)*Math.floor(Math.max(0,attInst.maxHp-attInst.hp)/10);
         if(atk.genericEffect?.bonusIfOpponentEx && defC.isEx) dmg += Number(atk.genericEffect.bonusIfOpponentEx||0);
@@ -9884,7 +9897,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         // Single-target and bench-target attacks: the player chooses the target; CPU prefers a likely KO.
         const genericBenchDamage=Number(atk.genericEffect?.benchDamage||0);
-        const genericOpponentPokemonDamage=Number(atk.genericEffect?.opponentPokemonDamage||0);
+        const genericOpponentPokemonDamage=Number(atk.genericEffect?.opponentPokemonDamage||atk.genericEffect?.opponentPokemonDamagePerEnergy||0);
         const genericBenchAllDamage=Number(atk.genericEffect?.benchAllDamage||0);
         const pickKind = genericOpponentPokemonDamage>0 ? 'oppPokemon' : (atk.fx === 'bench_snipe30' || genericBenchDamage>0) ? 'oppBench' : (atk.fx === 'metal_turbo' || atk.genericEffect?.switchSelf || atk.genericEffect?.selfBenchDamageTarget>0 || atk.genericEffect?.attachEnergyTarget==='bench' || atk.genericEffect?.moveEnergyToBench) ? 'ownBench' : null;
         if(pickKind==='oppPokemon'&&!choice){
@@ -9931,8 +9944,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         const coinEffect=atk.genericEffect||{};
         let coinHeads=0, coinRolls=0;
-        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy||coinEffect.coinDiscardOpponentRandomEnergyPerHeads||coinEffect.coinUntilTails||coinEffect.selfDamageOnTails||coinEffect.coinAllHeadsBonus||coinEffect.coinPerPokemon||coinEffect.opponentStatusesIfHeads||coinEffect.opponentStatusesIfAtLeastHeads||coinEffect.defendingCannotAttackNextTurnIfHeads||coinEffect.coinThenDiscardOpponentRandomHand||coinEffect.coinDiscardOpponentRandomHandPerHeads||coinEffect.coinShuffleOpponentRandomHandIfHeads||coinEffect.coinShuffleOpponentRandomHandPerHeads||coinEffect.selfCannotAttackNextTurnIfTails||coinEffect.opponentStatusesIfTails){
-          const coinCount=coinEffect.coinPerPokemon?Math.max(1,Math.min(4,(s.active?1:0)+s.bench.length)):Math.max(1,Math.min(4,Number(coinEffect.coinCount)||1));
+        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy||coinEffect.coinDiscardOpponentRandomEnergyPerHeads||coinEffect.coinUntilTails||coinEffect.selfDamageOnTails||coinEffect.coinAllHeadsBonus||coinEffect.coinPerPokemon||coinEffect.coinPerEnergy||coinEffect.coinPerEnergyType||coinEffect.opponentStatusesIfHeads||coinEffect.opponentStatusesIfAtLeastHeads||coinEffect.defendingCannotAttackNextTurnIfHeads||coinEffect.coinThenDiscardOpponentRandomHand||coinEffect.coinDiscardOpponentRandomHandPerHeads||coinEffect.coinShuffleOpponentRandomHandIfHeads||coinEffect.coinShuffleOpponentRandomHandPerHeads||coinEffect.selfCannotAttackNextTurnIfTails||coinEffect.opponentStatusesIfTails){
+          const coinCount=coinEffect.coinPerPokemon?Math.max(1,Math.min(4,(s.active?1:0)+s.bench.length)):coinEffect.coinPerEnergy?Math.max(1,Math.min(10,s.active.energies.length)):coinEffect.coinPerEnergyType?Math.min(10,s.active.energies.filter(e=>e===coinEffect.coinPerEnergyType).length):Math.max(1,Math.min(4,Number(coinEffect.coinCount)||1));
           if(coinEffect.coinUntilTails){
             let tails=false;
             while(coinRolls<10&&!tails){coinRolls++;if(Math.random()<0.5)coinHeads++;else tails=true;}
@@ -9946,7 +9959,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           else if(coinEffect.coinBonusDamage) rolledDamage+=Number(coinEffect.coinBonusDamage)*coinHeads;
           if(coinEffect.coinAllHeadsBonus&&coinHeads===coinRolls) rolledDamage+=Number(coinEffect.coinAllHeadsBonus);
           atk={...atk,damage:rolledDamage};
-          this.log(`コイントス！オモテ${coinHeads}回／${coinRolls}回。`);
+          if(coinRolls>0)this.log(`コイントス！オモテ${coinHeads}回／${coinRolls}回。`);
         }
         if(!isGenomeHack && String(atk.name||'').toLowerCase()==='sweets relay'){
           s.sweetsRelayUses=Number(s.sweetsRelayUses||0)+1;
@@ -9995,6 +10008,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(ge.discardAllEnergyType){const type=ge.discardAllEnergyType,before=s.active.energies.length;s.active.energies=s.active.energies.filter(e=>e!==type);const removed=before-s.active.energies.length;if(removed)this.log(`${getCardDisplayName(attC)}のワザ効果：${TYPE_META[type]?.code||type}エネルギーをすべてトラッシュ。`);}
         if(ge.discardAllEnergy){const removed=s.active.energies.length;s.active.energies=[];if(removed)this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをすべてトラッシュ。`);}
         if(ge.discardRandomEnergy&&s.active.energies.length){const index=Math.floor(Math.random()*s.active.energies.length);s.active.energies.splice(index,1);this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをランダムに1個トラッシュ。`);}
+        const randomEnergyZones=ge.discardRandomEnergyFromAll?[s.active,...s.bench,opp.active,...opp.bench]:ge.discardRandomEnergyFromOwn?[s.active,...s.bench]:ge.discardRandomEnergyFromActives?[s.active,opp.active]:null;
+        const randomEnergyDiscardCount=Number(ge.discardRandomEnergyFromAll||ge.discardRandomEnergyFromOwn||ge.discardRandomEnergyFromActives||0);
+        for(let n=0;n<randomEnergyDiscardCount&&randomEnergyZones;n++){
+          const choices=randomEnergyZones.filter(Boolean).flatMap(inst=>(inst.energies||[]).map((type,index)=>({inst,type,index})));
+          if(!choices.length)break;
+          const chosen=choices[Math.floor(Math.random()*choices.length)];
+          chosen.inst.energies.splice(chosen.index,1);
+          this.log(`場のポケモンからランダムに${TYPE_META[chosen.type]?.code||chosen.type}エネルギーを1個トラッシュ！`);
+        }
+
         const opponentActiveProtected=this.isAttackProtected(opp.active);
         const opponentEnergyDiscards=opponentActiveProtected?0:(ge.coinDiscardOpponentRandomEnergyPerHeads?coinHeads:((ge.discardOpponentRandomEnergy||(ge.coinThenDiscardOpponentRandomEnergy&&coinHeads>0))?1:0));
         let removedOpponentEnergy=0;
@@ -10052,7 +10075,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(ge.opponentPokemonDamage>0&&choice?.targetZone){
           const target=choice.targetZone==='active'?opp.active:opp.bench[choice.targetIndex];
           if(target){
-            const extraDamage=this.attackDamageAfterDefenses(target,Number(ge.opponentPokemonDamage),attC.type,attC.isEx);
+            const targetRawDamage=ge.opponentPokemonDamagePerEnergy>0?Number(ge.opponentPokemonDamagePerEnergy)*(target.energies?.length||0):Number(ge.opponentPokemonDamage);
+            const extraDamage=this.attackDamageAfterDefenses(target,targetRawDamage,attC.type,attC.isEx);
             target.hp-=extraDamage;
             if(choice.targetZone==='active'&&extraDamage>0) this.showDmg(side==='player'?'opp-active':'player-active',extraDamage,false);
             this.log(`ワザ効果！${getCardDisplayName(CARD_MAP[target.cardId])}に${extraDamage}ダメージ！`);
@@ -10146,7 +10170,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           this.log(`相手の${getCardDisplayName(CARD_MAP[target.cardId])}にも${amount}ダメージ！`);
         }
         if(genericBenchAllDamage>0 && opp.bench.length){
-          const targets=opp.bench.filter(b=>!ge.damagedBenchOnly||b.hp<b.maxHp);
+          const targets=opp.bench.filter(b=>(!ge.damagedBenchOnly||b.hp<b.maxHp)&&(!ge.benchRequiresEnergy||(b.energies?.length||0)>0));
           targets.forEach(b=>{b.hp-=this.attackDamageAfterDefenses(b,genericBenchAllDamage,attC.type,attC.isEx);});
           if(targets.length)this.log(`相手のベンチ${ge.damagedBenchOnly?'ダメージを受けているポケモン':''}にも${genericBenchAllDamage}ダメージ！`);
         }
