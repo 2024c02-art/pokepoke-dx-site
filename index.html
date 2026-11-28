@@ -6760,6 +6760,21 @@ const PACK_CATALOG_DATA = {
         const jpNumbers=effectNumbers(jpText), enNumbers=effectNumbers(enText);
         if(jpNumbers.join(',')!==enNumbers.join(',')) conflicts.push(label+'効果量');
       };
+      const effectTargetZone=(value,language)=>{
+        const text=normalText(value);
+        if(language==='en'){
+          if(/\\b(?:Benched Pokémon|Benched Pokemon|Pokémon on (?:your|the opponent's) Bench|Pokemon on (?:your|the opponent's) Bench)\\b/i.test(text))return 'bench';
+          if(/\\b(?:Active Pokémon|Active Pokemon|Defending Pokémon|Defending Pokemon|Pokémon in the Active Spot|Pokemon in the Active Spot)\\b/i.test(text))return 'active';
+          return null;
+        }
+        if(/(?:相手|自分)のベンチ(?:にいる)?(?:ポケモン)?|ベンチの(?:相手の|自分の)?ポケモン|ベンチポケモン/.test(text))return 'bench';
+        if(/(?:相手|自分)のバトルポケモン|(?:相手|自分)のバトル場のポケモン|ワザを受けたポケモン/.test(text))return 'active';
+        return null;
+      };
+      const compareEffectSemantics=(label,japanese,english)=>{
+        const jpZone=effectTargetZone(japanese,'ja'), enZone=effectTargetZone(english,'en');
+        if(jpZone!==enZone&&(jpZone||enZone))conflicts.push(label+'対象範囲'+(!jpZone||!enZone?'要確認':''));
+      };
       const normalizedDamage=value=>normalText(value).replace(/[×✕]/g,'x').replace(/\s+/g,'').toLowerCase();
       const compareCosts=(label,japaneseCost,sourceCost)=>{
         if(!japaneseCost||typeof japaneseCost!=='object'||Array.isArray(japaneseCost)||!Object.keys(japaneseCost).length||!Array.isArray(sourceCost)) return;
@@ -6792,7 +6807,10 @@ const PACK_CATALOG_DATA = {
           const jpEffect=normalText(a?.effect||'');
           const sourceEffect=normalText(source?.text||'');
           if((jpEffect&&!sourceEffect)||(canCheckJapaneseEffects&&!!jpEffect!==!!sourceEffect)) conflicts.push('ワザ効果有無'+(i+1));
-          if(jpEffect&&sourceEffect) compareEffectNumbers('ワザ'+(i+1),jpEffect,sourceEffect);
+          if(jpEffect&&sourceEffect){
+            compareEffectNumbers('ワザ'+(i+1),jpEffect,sourceEffect);
+            compareEffectSemantics('ワザ'+(i+1),jpEffect,sourceEffect);
+          }
         });
       }else if(enDetail.category==='Pokemon'&&sourceAttackList.length){
         coverage.push('日本語ワザ詳細は一部未収録');
@@ -6811,12 +6829,18 @@ const PACK_CATALOG_DATA = {
       }else if(sourceAbility&&!jpAbilities.length){
         coverage.push('日本語特性情報は一部未収録');
       }
-      if(sourceAbility&&normalText(jaAbilityText)) compareEffectNumbers('特性',jaAbilityText,sourceAbility.text);
+      if(sourceAbility&&normalText(jaAbilityText)){
+        compareEffectNumbers('特性',jaAbilityText,sourceAbility.text);
+        compareEffectSemantics('特性',jaAbilityText,sourceAbility.text);
+      }
       const jpCardText=normalText(jp.cardEffectText||'');
       const englishCardText=normalText(sourceText||'');
       if(enDetail.category==='Trainer'&&canCheckJapaneseEffects){
         if((jpCardText&&!englishCardText)||(canCheckJapaneseEffects&&!!jpCardText!==!!englishCardText)) conflicts.push('トレーナーズ効果有無');
-        if(jpCardText&&englishCardText) compareEffectNumbers('トレーナーズ',jpCardText,englishCardText);
+        if(jpCardText&&englishCardText){
+          compareEffectNumbers('トレーナーズ',jpCardText,englishCardText);
+          compareEffectSemantics('トレーナーズ',jpCardText,englishCardText);
+        }
       }else if(enDetail.category==='Trainer'&&!jpCardText){
         coverage.push('日本語カード効果文は未収録');
       }
