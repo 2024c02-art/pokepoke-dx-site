@@ -7064,6 +7064,8 @@ const PACK_CATALOG_DATA = {
         if(/^During your opponent's next turn, they can't play any Trainer cards from their hand$/i.test(t)) return {opponentTrainerLockNextTurn:true};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has an Ability, this attack does (\d+) more damage$/i))) return {bonusIfOpponentHasAbility:Number(m[1])};
         if((m=t.match(/^If you played a Supporter card from your hand during this turn, this attack does (\d+) more damage$/i))) return {bonusIfSupporterPlayedThisTurn:Number(m[1])};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has a Pokémon Tool attached, this attack does (\d+) more damage$/i))) return {bonusIfOpponentHasTool:Number(m[1])};
+        if((m=t.match(/^This attack does (\d+) damage for each Pokémon Tool attached to all of your Pokémon$/i))) return {damagePerPokemonToolAttached:Number(m[1])};
         if((m=t.match(/^If the Defending Pokémon is a Basic Pokémon, this attack does (\d+) more damage$/i))) return {bonusIfOpponentIsBasic:Number(m[1])};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is a Basic (?:Pokémon|Pokemon), this attack does (\d+) more damage$/i))) return {bonusIfOpponentIsBasic:Number(m[1])};
         if((m=t.match(/^If 1 of your Pokémon used Sweets Relay during your last turn, this attack does (\d+) more damage$/i))) return {bonusIfSweetsRelayLastTurn:Number(m[1])};
@@ -9811,6 +9813,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(atk.genericEffect?.bonusPerDiscardedSupporter) dmg += Number(atk.genericEffect.bonusPerDiscardedSupporter||0)*s.discard.filter(id=>CARD_MAP[id]?.category==='Trainer'&&CARD_MAP[id]?.subType==='Supporter').length;
         if(atk.genericEffect?.bonusPerDiscardedItem) dmg += Number(atk.genericEffect.bonusPerDiscardedItem||0)*s.discard.filter(id=>CARD_MAP[id]?.category==='Trainer'&&CARD_MAP[id]?.subType!=='Supporter').length;
         if(atk.genericEffect?.bonusIfOpponentHasAbility && defC.ability) dmg += Number(atk.genericEffect.bonusIfOpponentHasAbility||0);
+        if(atk.genericEffect?.bonusIfOpponentHasTool && defInst.tool) dmg += Number(atk.genericEffect.bonusIfOpponentHasTool||0);
+        if(atk.genericEffect?.damagePerPokemonToolAttached) dmg += Number(atk.genericEffect.damagePerPokemonToolAttached||0)*[s.active,...s.bench].filter(p=>p&&p.tool).length;
         if(atk.genericEffect?.bonusIfSupporterPlayedThisTurn && s.supporterUsed) dmg += Number(atk.genericEffect.bonusIfSupporterPlayedThisTurn||0);
         if(atk.genericEffect?.bonusIfOpponentIsBasic && defC.stage==='Basic') dmg += Number(atk.genericEffect.bonusIfOpponentIsBasic||0);
         if(atk.genericEffect?.bonusIfSweetsRelayLastTurn && Number(s.sweetsRelayUsedTurn)===this.turn-2) dmg += Number(atk.genericEffect.bonusIfSweetsRelayLastTurn||0);
