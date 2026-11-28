@@ -6783,11 +6783,40 @@ const PACK_CATALOG_DATA = {
         const opponent=/相手の(?:(?:ベンチ|バトル場|バトル)(?:にいる|の)?)?ポケモン/.test(text);
         return own&&opponent?'both':opponent?'opponent':own?'own':null;
       };
+      const effectMeaningMarkers=[
+        {label:'効果種類:回復',ja:/回復/,en:/\\bheal(?:s|ed|ing)?\\b/i},
+        {label:'効果種類:カードを引く',ja:/(?:カード|枚).{0,8}引く/,en:/\\bdraw(?:s|ing)?\\b/i},
+        {label:'効果種類:手札破棄',ja:/手札.{0,18}(?:トラッシュ|捨て)/,en:/\\bdiscard(?:s|ed|ing)?\\b[\\s\\S]{0,80}\\b(?:card|cards|hand)\\b/i},
+        {label:'効果種類:エネルギー付与',ja:/エネルギー.{0,24}(?:つけ|付け)/,en:/\\battach(?:es|ed|ing)?\\b[\\s\\S]{0,100}\\b(?:energy|it)\\b/i},
+        {label:'効果種類:エネルギー破棄',ja:/エネルギー.{0,24}(?:トラッシュ|捨て)/,en:/\\bdiscard(?:s|ed|ing)?\\b[\\s\\S]{0,80}\\benergy\\b/i},
+        {label:'効果種類:エネルギー移動',ja:/エネルギー.{0,24}移動/,en:/\\bmove(?:s|d|ing)?\\b[\\s\\S]{0,100}\\benergy\\b/i},
+        {label:'効果種類:山札に戻す',ja:/山札に(?:戻|もど)/,en:/\\b(?:shuffle|put)\\b[\\s\\S]{0,100}\\bdeck\\b/i},
+        {label:'効果種類:手札に戻す',ja:/手札に(?:戻|もど)/,en:/\\b(?:return|put)\\b[\\s\\S]{0,100}\\bhand\\b/i},
+        {label:'効果種類:ねむり',ja:/ねむり|眠り/,en:/\\basleep\\b/i},
+        {label:'効果種類:どく',ja:/どく|毒/,en:/\\bpoisoned\\b/i},
+        {label:'効果種類:やけど',ja:/やけど|火傷/,en:/\\bburned\\b/i},
+        {label:'効果種類:マヒ',ja:/マヒ|まひ/,en:/\\bparalyzed\\b/i},
+        {label:'効果種類:こんらん',ja:/こんらん|混乱/,en:/\\bconfused\\b/i},
+        {label:'発動条件:コイン',ja:/コインを|コインが/,en:/\\b(?:flip|toss)\\b[\\s\\S]{0,30}\\bcoin\\b/i},
+        {label:'発動条件:オモテ',ja:/オモテ|おもて|表なら/,en:/\\bheads?\\b/i},
+        {label:'発動条件:ウラ',ja:/ウラ|うら|裏なら/,en:/\\btails?\\b/i},
+        {label:'タイミング:次の自分の番',ja:/次の自分の番/,en:/during your next turn/i},
+        {label:'タイミング:次の相手の番',ja:/次の相手の番/,en:/during your opponent['’]s next turn/i},
+        {label:'タイミング:番の終わり',ja:/(?:自分|相手|おたがい)の番の終わり/,en:/at the end of (?:your|your opponent['’]s|each) turn/i},
+        {label:'発動条件:きぜつ',ja:/きぜつしたとき|きぜつするとき/,en:/\\bknocked out\\b/i}
+      ];
+      const compareEffectMeaning=(label,japanese,english)=>{
+        const jpText=normalText(japanese), enText=normalText(english);
+        for(const marker of effectMeaningMarkers){
+          if(marker.ja.test(jpText)!==marker.en.test(enText))conflicts.push(label+marker.label);
+        }
+      };
       const compareEffectSemantics=(label,japanese,english)=>{
         const jpZone=effectTargetZone(japanese,'ja'), enZone=effectTargetZone(english,'en');
         if(jpZone!==enZone&&(jpZone||enZone))conflicts.push(label+'対象範囲'+(!jpZone||!enZone?'要確認':''));
         const jpSide=effectTargetSide(japanese,'ja'), enSide=effectTargetSide(english,'en');
         if(jpSide!==enSide&&(jpSide||enSide))conflicts.push(label+'対象プレイヤー'+(!jpSide||!enSide?'要確認':''));
+        compareEffectMeaning(label,japanese,english);
       };
       const normalizedDamage=value=>normalText(value).replace(/[×✕]/g,'x').replace(/\s+/g,'').toLowerCase();
       const compareCosts=(label,japaneseCost,sourceCost)=>{
