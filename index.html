@@ -10464,6 +10464,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         const pts = c.pointValue || (c.isEx ? 2 : 1);
         def.discard.push(...(inst.under || []), inst.cardId);
+        // Remove the original Active before resolving a Knock Out-triggered counter.
+        // A recursive Knock Out may end the match; leaving this card in the Active slot
+        // would then preserve an already-KO'd Pokémon in the final board state.
+        if(!isBench) def.active=null;
         att.points = Math.min(3, att.points + pts);
         this.log(`${getCardDisplayName(c)}はきぜつ！（${att.name}に ${pts}ポイント！）`);
         if(knockedOutByOpponentAttack&&z==='active'&&knockoutAbility?.counterDamageOnKnockout>0&&att.active&&att.active.hp<=0&&!this.over){
@@ -10477,7 +10481,6 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           return true;
         }
 
-        def.active = null;
         if (att.points >= 3) {
           this.endMatch(defSide === 'player' ? 'opp' : 'player', '3ポイント先取しました！');
           return true;
