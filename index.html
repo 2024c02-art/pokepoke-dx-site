@@ -6881,12 +6881,29 @@ const PACK_CATALOG_DATA = {
       parseGenericEffect(text) {
         const t=String(text||'').trim().replace(/[.!。]$/,''); if(!t) return null;
         let m;
+        const deckSearchMatch=t.match(/^Put (?:a|1) random (.+?) from your deck (into your hand|onto your Bench)$/i);
+        if(deckSearchMatch){
+          const description=deckSearchMatch[1].trim(),typeMatch=description.match(/\[([A-Za-z]+)\]/);
+          const clean=description.replace(/\[[^\]]+\]/g,'').trim();
+          const result={action:'searchRandomCardInDeck',searchDeckTarget:/into your hand/i.test(deckSearchMatch[2])?'hand':'bench'};
+          if(typeMatch)result.searchDeckPokemonType=this.energyEffectType(typeMatch[1])||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless',dragon:'Dragon'})[typeMatch[1].toLowerCase()]||null;
+          if(/\bBasic\b/i.test(clean))result.searchDeckStage='Basic';
+          if(/Pokémon Tool|Pokemon Tool/i.test(clean)){result.searchDeckCategory='Trainer';result.searchDeckSubType='Tool';}
+          else if(/Supporter/i.test(clean)){result.searchDeckCategory='Trainer';result.searchDeckSubType='Supporter';}
+          else if(/Item/i.test(clean)){result.searchDeckCategory='Trainer';result.searchDeckSubType='Item';}
+          else if(/Pokémon|Pokemon/i.test(clean))result.searchDeckCategory='Pokemon';
+          else{result.searchDeckCategory='Pokemon';result.searchDeckNames=clean.split(/\s+or\s+/i).map(x=>x.trim()).filter(Boolean);}
+          return result;
+        }
+        const evolvesSearchMatch=t.match(/^Put a random card from your deck that evolves from (.+?) into your hand$/i);
+        if(evolvesSearchMatch)return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckEvolvesFrom:evolvesSearchMatch[1].trim()};
         const energyTypeFromText=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
         if((m=t.match(/^This attack also does (\d+) damage to 1 of your Benched (?:Pokémon|Pokemon)$/i)))return {selfBenchDamageTarget:Number(m[1])};
         if((m=t.match(/^Take (?:a|(\d+)) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to this (?:Pokémon|Pokemon)$/i)))return {attachEnergyFromZone:Number(m[1]||1),attachEnergyType:energyTypeFromText(m[2]),attachEnergyTarget:'self'};
         if((m=t.match(/^Take (?:a|(\d+)) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to 1 of your Benched(?: \[([A-Za-z]+)\])? (?:Pokémon|Pokemon)$/i)))return {attachEnergyFromZone:Number(m[1]||1),attachEnergyType:energyTypeFromText(m[2]),attachEnergyTarget:'bench',attachEnergyPokemonType:energyTypeFromText(m[3]||m[2])};
         if((m=t.match(/^Move (all|a|1|\d+)(?: random)?(?: \[([A-Za-z]+)\])? Energy from this (?:Pokémon|Pokemon) to 1 of your Benched (?:Pokémon|Pokemon)$/i)))return {moveEnergyToBench:/^all$/i.test(m[1])?-1:Number(m[1]==='a'?1:m[1]),moveEnergyRandom:/random/i.test(t),moveEnergyType:energyTypeFromText(m[2])};
 
+        if((m=t.match(/^1 of your opponent's (?:Pokémon|Pokemon) is chosen at random\. Do (\d+) damage to it$/i))) return {randomOpponentPokemonDamage:Number(m[1]),randomOpponentPokemonDamageCount:1};
         if((m=t.match(/^1 of your opponent's (?:Pokémon|Pokemon) is chosen at random (\d+) times?\. For each time a (?:Pokémon|Pokemon) was chosen, do (\d+) damage to it$/i))) return {randomOpponentPokemonDamage:Number(m[2]),randomOpponentPokemonDamageCount:Number(m[1])};
         if((m=t.match(/^This attack (?:also )?does (\d+) damage to 1 of your opponent's (?:Pokémon|Pokemon)(?: that (?:has damage on it|have damage on them))?$/i))) return {opponentPokemonDamage:Number(m[1]),opponentPokemonDamageRequiresDamage:/that (?:has damage on it|have damage on them)/i.test(t)};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is (Poisoned|Burned|Asleep|Paralyzed|Confused), this attack does (\d+) more damage$/i))) return {bonusIfOpponentStatus:m[1].toLowerCase(),bonusIfOpponentStatusDamage:Number(m[2])};
@@ -6995,6 +7012,14 @@ const PACK_CATALOG_DATA = {
           const statuses=readStatuses(combinedCoinStatus[1]);
           if(statuses)return {coinCount:1,coinFailDamageZero:true,opponentStatusesIfHeads:statuses};
         }
+        if((m=t.match(/^Discard (?:a|1) random (?:(Item|Supporter|Pokémon Tool|Pokemon Tool) )?card from your opponent's hand$/i))) return {discardOpponentRandomHand:1,randomOpponentHandCardType:/Tool/i.test(m[1]||'')?'Tool':m[1]||null};
+        if(/^Flip a coin\. If heads, discard a random card from your opponent's hand$/i.test(t)) return {coinCount:1,coinThenDiscardOpponentRandomHand:true};
+        if((m=t.match(/^Flip (\d+) coins?\. For each heads, discard a random card from your opponent's hand$/i))) return {coinCount:Number(m[1]),coinDiscardOpponentRandomHandPerHeads:true};
+        if(/^Your opponent reveals a random card from their hand and shuffles it into their deck$/i.test(t)) return {shuffleOpponentRandomHand:1};
+        if(/^Flip a coin\. If heads, your opponent reveals a random card from their hand and shuffles it into their deck$/i.test(t)) return {coinCount:1,coinShuffleOpponentRandomHandIfHeads:true};
+        if((m=t.match(/^Flip (\d+) coins?\. For each heads, a card is chosen at random from your opponent's hand\. Your opponent reveals that card and shuffles it into their deck$/i))) return {coinCount:Number(m[1]),coinShuffleOpponentRandomHandPerHeads:true};
+        if((m=t.match(/^Flip a coin\. If heads, your opponent's Active (?:Pokémon|Pokemon) is now (Poisoned|Burned|Asleep|Paralyzed|Confused)\. If tails, your opponent's Active (?:Pokémon|Pokemon) is now (Poisoned|Burned|Asleep|Paralyzed|Confused)$/i))) return {coinCount:1,opponentStatusesIfHeads:[m[1]],opponentStatusesIfTails:[m[2]]};
+        if(/^Flip a coin\. If tails, during your next turn, this (?:Pokémon|Pokemon) can't attack$/i.test(t)) return {coinCount:1,selfCannotAttackNextTurnIfTails:true};
         if((m=t.match(/^This attack does (\d+) more damage for each of your Benched ([A-Za-z][A-Za-z0-9'♀♂ .-]*)$/i)))return {bonusPerNamedBenchPokemon:Number(m[1]),benchPokemonNames:m[2].split(/\s+or\s+/i).map(x=>x.trim())};
         if((m=t.match(/^If ([A-Za-z][A-Za-z0-9'♀♂ .-]*) is on your Bench, this attack does (\d+) more damage$/i)))return {bonusIfBenchPokemonName:m[1].trim(),bonusIfBenchPokemonNameDamage:Number(m[2])};
         if((m=t.match(/^If any of your Benched (?:Pokémon|Pokemon) have damage on them, this attack does (\d+) more damage$/i)))return {bonusIfAnyBenchDamaged:Number(m[1])};
@@ -7008,6 +7033,26 @@ const PACK_CATALOG_DATA = {
       parseGenericAbility(text) {
         const t=String(text||'').replace(/\u00a0/g,' ').trim().replace(/[.!。]$/,'');if(!t)return null;
         let m;const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
+        const deckSearchText=t.replace(/^Once during your turn, you may\s+/i,'');
+        const deckSearchMatch=deckSearchText.match(/^Put (?:a|1) random (.+?) from your deck (into your hand|onto your Bench)$/i);
+        if(deckSearchMatch){
+          const description=deckSearchMatch[1].trim(),typeMatch=description.match(/\[([A-Za-z]+)\]/);
+          const clean=description.replace(/\[[^\]]+\]/g,'').trim();
+          const result={action:'searchRandomCardInDeck',searchDeckTarget:/into your hand/i.test(deckSearchMatch[2])?'hand':'bench'};
+          if(typeMatch)result.searchDeckPokemonType=this.energyEffectType(typeMatch[1])||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless',dragon:'Dragon'})[typeMatch[1].toLowerCase()]||null;
+          if(/\bBasic\b/i.test(clean))result.searchDeckStage='Basic';
+          if(/Pokémon Tool|Pokemon Tool/i.test(clean)){result.searchDeckCategory='Trainer';result.searchDeckSubType='Tool';}
+          else if(/Supporter/i.test(clean)){result.searchDeckCategory='Trainer';result.searchDeckSubType='Supporter';}
+          else if(/Item/i.test(clean)){result.searchDeckCategory='Trainer';result.searchDeckSubType='Item';}
+          else if(/Pokémon|Pokemon/i.test(clean))result.searchDeckCategory='Pokemon';
+          else{result.searchDeckCategory='Pokemon';result.searchDeckNames=clean.split(/\s+or\s+/i).map(x=>x.trim()).filter(Boolean);}
+          return result;
+        }
+        const evolvesSearchMatch=deckSearchText.match(/^Put a random card from your deck that evolves from (.+?) into your hand$/i);
+        if(evolvesSearchMatch)return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckEvolvesFrom:evolvesSearchMatch[1].trim()};
+
+        if((m=t.match(/^Once during your turn, you may take (?:a|1) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to this (?:Pokémon|Pokemon)\. If you use this Ability, your turn ends$/i)))return {action:'attachEnergySelf',energyType:typeOf(m[1]),energyCount:1,endsTurn:true};
+        if(/^Once during your turn, you may discard the top card of your opponent's deck$/i.test(t))return {action:'discardTopOpponentDeck'};
         if((m=t.match(/^Once during your turn, you may heal (\d+) damage from each of your(?: \[([A-Za-z]+)\])? (?:Pokémon|Pokemon)$/i)))return {action:'healEachOwn',amount:Number(m[1]),targetPokemonType:typeOf(m[2])};
         if((m=t.match(/^Once during your turn, you may heal (\d+) damage from your Active (?:Pokémon|Pokemon)$/i)))return {action:'healActive',amount:Number(m[1])};
         if((m=t.match(/^Once during your turn, (?:if this (?:Pokémon|Pokemon) is in the Active Spot, )?you may heal (\d+) damage from 1 of your (?:Pokémon|Pokemon)$/i)))return {action:'healOwnOne',amount:Number(m[1])};
@@ -8621,6 +8666,32 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       },
       toggleLog() { document.getElementById('battle-log-drawer').classList.toggle('hidden'); },
 
+      resolveRandomDeckSearch(side,effect,sourceLabel='効果') {
+        const board=side==='player'?this.p:this.o;
+        if(!board||!Array.isArray(board.deck))return false;
+        const target=effect?.searchDeckTarget==='bench'?'bench':'hand';
+        if(target==='bench'&&board.bench.length>=3){if(side==='player')ui.toast('ベンチに空きがありません');return false;}
+        if(target==='hand'&&board.hand.length>=10){if(side==='player')ui.toast('手札が上限のためカードを加えられません');return false;}
+        const normalize=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[’']/g,"'").replace(/\s+/g,' ').trim();
+        const names=(effect?.searchDeckNames||[]).map(normalize);
+        const candidates=board.deck.map((id,index)=>({id,index,card:CARD_MAP[id]})).filter(({card})=>{
+          if(!card)return false;
+          if(effect.searchDeckCategory&&card.category!==effect.searchDeckCategory)return false;
+          if(effect.searchDeckSubType&&card.subType!==effect.searchDeckSubType)return false;
+          if(effect.searchDeckPokemonType&&card.type!==effect.searchDeckPokemonType)return false;
+          if(effect.searchDeckStage&&card.stage!==effect.searchDeckStage)return false;
+          if(effect.searchDeckEvolvesFrom&&normalize(card.evolvesFrom)!==normalize(effect.searchDeckEvolvesFrom))return false;
+          if(names.length){const cardNames=[card.sourceNameEN,card.enDetail?.name,card.nameEN,card.name].map(normalize);if(!names.some(name=>cardNames.includes(name)))return false;}
+          return true;
+        });
+        if(!candidates.length){if(side==='player')ui.toast('山札に条件に合うカードがありません');return false;}
+        const chosen=candidates[Math.floor(Math.random()*candidates.length)];
+        board.deck.splice(chosen.index,1);board.deck=this.shuffle(board.deck);
+        if(target==='bench'){board.bench.push(this.createInst(chosen.id,this.turn));this.log(`${sourceLabel}！山札から${getCardDisplayName(chosen.card)}をベンチに出した！`);}
+        else{board.hand.push(chosen.id);this.log(`${sourceLabel}！山札から${getCardDisplayName(chosen.card)}を手札に加えた！`);}
+        return true;
+      },
+
       drawCards(side, cnt) {
         const s = side === 'player' ? this.p : this.o;
         for (let i = 0; i < cnt && s.deck.length > 0 && s.hand.length < 10; i++) {
@@ -9573,6 +9644,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           board.active.hp=Math.min(board.active.maxHp,board.active.hp+Number(ge.amount));this.log(`${ability.name}！バトルポケモンのHPを${Number(ge.amount)}回復！`);
         }else if(ge.action==='healOwnOne'&&chosen){chosen.inst.hp=Math.min(chosen.inst.maxHp,chosen.inst.hp+Number(ge.amount));this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のHPを${Number(ge.amount)}回復！`);}
         else if(ge.action==='damageOpponentOne'&&chosen){chosen.inst.hp-=Number(ge.amount);this.log(`${ability.name}！相手の${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${Number(ge.amount)}ダメージ！`);if(chosen.inst.hp<=0)this.checkKO(side==='player'?'opp':'player',chosen.z,chosen.i,true);}
+        else if(ge.action==='searchRandomCardInDeck'){if(!this.resolveRandomDeckSearch(side,ge,ability.name))return false;}
+        else if(ge.action==='discardTopOpponentDeck'){if(!opp.deck.length){if(side==='player')ui.toast('相手の山札にカードがありません');return false;}opp.discard.push(opp.deck.shift());this.log(`${ability.name}！相手の山札の一番上のカードをトラッシュ！`);}
         else if(ge.action==='lookAtTopCard'){const top=board.deck?.[0];if(!top){if(side==='player')ui.toast('山札にカードがありません');return false;}const name=getCardDisplayName(CARD_MAP[top]);this.log(`${ability.name}！山札の一番上は${name}。`);if(side==='player')ui.toast(`山札の一番上：${name}`);}
         else if(ge.action==='moveDamageToSelf'&&chosen){const moved=Math.max(0,Number(chosen.inst.maxHp)-Number(chosen.inst.hp));if(!moved)return false;chosen.inst.hp=chosen.inst.maxHp;inst.hp-=moved;this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のダメージ${moved}をこのポケモンに移動！`);if(inst.hp<=0)this.checkKO(side,z,i,true);}
         else if(ge.action==='damageOpponentActive'){opp.active.hp-=Number(ge.amount);this.log(`${ability.name}！相手のバトルポケモンに${Number(ge.amount)}ダメージ！`);if(opp.active.hp<=0)this.checkKO(side==='player'?'opp':'player','active',0,true);}
@@ -9586,7 +9659,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         else if(ge.action==='switchSelfFromBench'&&board.active&&z==='bench'){const old=board.active;this.clearSpecialConditions(old);board.active=inst;board.bench[i]=old;this.log(`${ability.name}！特性を持つポケモンをバトル場に出した！`);}
         else if(ge.action==='applyOpponentStatus'||ge.action==='applyOpponentStatusIfHeads'){if(!opp.active){if(side==='player')ui.toast('相手のバトルポケモンがいません');return false;}const heads=ge.action!=='applyOpponentStatusIfHeads'||Math.random()<0.5;if(heads){this.applySpecialCondition(opp.active,ge.status);this.log(`${ability.name}！相手のバトルポケモンを${ge.status}にした！`);}else this.log(`${ability.name}！コイントスはウラ。効果は発動しなかった。`);}
         else return false;
-        if(!ge.repeatable)inst.abilityUsed=true;sound.energy();battleVfx.triggerBurst(side);this.render();if(side==='player'&&this.isOnlineP2P)this.syncToPeer(false);return true;
+        if(!ge.repeatable)inst.abilityUsed=true;sound.energy();battleVfx.triggerBurst(side);this.render();
+        if(ge.endsTurn&&!this.over&&!this.pendingSelfKO){if(side==='player')this.endTurn();else if(!this.isOnlineP2P&&this.currentSide==='opp'){this.turn++;this.startTurn('player');}return true;}
+        if(side==='player'&&this.isOnlineP2P)this.syncToPeer(false);return true;
       },
       useAbility(side, z, i) {
         if (this.over || this.actionLocked || this.phase !== 'play' || (side === 'player' && this.currentSide !== 'player')) return;
@@ -9595,6 +9670,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!inst || inst.abilityUsed) return;
         const c = CARD_MAP[inst.cardId]; if (!c?.ability) return;
 
+        if(this.currentSide!==side)return;
         if (c.id === 'c_moltres_ex') {
           const fireTargets = board.bench.map((b, bi) => ({ b, bi })).filter(x => CARD_MAP[x.b.cardId].type === 'Fire');
           if (!fireTargets.length) { if (side === 'player') ui.toast('炎タイプのベンチポケモンがいません'); return; }
@@ -9855,7 +9931,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         const coinEffect=atk.genericEffect||{};
         let coinHeads=0, coinRolls=0;
-        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy||coinEffect.coinDiscardOpponentRandomEnergyPerHeads||coinEffect.coinUntilTails||coinEffect.selfDamageOnTails||coinEffect.coinAllHeadsBonus||coinEffect.coinPerPokemon||coinEffect.opponentStatusesIfHeads||coinEffect.opponentStatusesIfAtLeastHeads||coinEffect.defendingCannotAttackNextTurnIfHeads){
+        if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy||coinEffect.coinDiscardOpponentRandomEnergyPerHeads||coinEffect.coinUntilTails||coinEffect.selfDamageOnTails||coinEffect.coinAllHeadsBonus||coinEffect.coinPerPokemon||coinEffect.opponentStatusesIfHeads||coinEffect.opponentStatusesIfAtLeastHeads||coinEffect.defendingCannotAttackNextTurnIfHeads||coinEffect.coinThenDiscardOpponentRandomHand||coinEffect.coinDiscardOpponentRandomHandPerHeads||coinEffect.coinShuffleOpponentRandomHandIfHeads||coinEffect.coinShuffleOpponentRandomHandPerHeads||coinEffect.selfCannotAttackNextTurnIfTails||coinEffect.opponentStatusesIfTails){
           const coinCount=coinEffect.coinPerPokemon?Math.max(1,Math.min(4,(s.active?1:0)+s.bench.length)):Math.max(1,Math.min(4,Number(coinEffect.coinCount)||1));
           if(coinEffect.coinUntilTails){
             let tails=false;
@@ -9924,9 +10000,28 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         let removedOpponentEnergy=0;
         for(let n=0;n<opponentEnergyDiscards&&opp.active.energies.length;n++){const index=Math.floor(Math.random()*opp.active.energies.length);opp.active.energies.splice(index,1);removedOpponentEnergy++;}
         if(removedOpponentEnergy)this.log(`相手のバトルポケモンのエネルギーをランダムに${removedOpponentEnergy}個トラッシュ！`);
+        const handDiscardCount=ge.coinDiscardOpponentRandomHandPerHeads?coinHeads:(ge.discardOpponentRandomHand||(ge.coinThenDiscardOpponentRandomHand&&coinHeads>0)?1:0);
+        const handShuffleCount=ge.coinShuffleOpponentRandomHandPerHeads?coinHeads:((ge.shuffleOpponentRandomHand||(ge.coinShuffleOpponentRandomHandIfHeads&&coinHeads>0))?1:0);
+        const removeRandomOpponentHandCard=shuffleBack=>{
+          const candidates=opp.hand.map((id,index)=>({id,index,card:CARD_MAP[id]})).filter(x=>{
+            const filter=ge.randomOpponentHandCardType;
+            return !filter||(filter==='Tool'?x.card?.subType==='Tool':x.card?.subType===filter);
+          });
+          if(!candidates.length)return false;
+          const chosen=candidates[Math.floor(Math.random()*candidates.length)];
+          opp.hand.splice(chosen.index,1);
+          if(shuffleBack){opp.deck.push(chosen.id);opp.deck=this.shuffle(opp.deck);}
+          else opp.discard.push(chosen.id);
+          this.log(shuffleBack?'相手の手札からランダムに1枚を山札に戻してシャッフル！':'相手の手札からランダムに1枚をトラッシュ！');
+          return true;
+        };
+        for(let n=0;n<handDiscardCount;n++)if(!removeRandomOpponentHandCard(false))break;
+        for(let n=0;n<handShuffleCount;n++)if(!removeRandomOpponentHandCard(true))break;
+
         if(ge.discardTopDeck&&s.deck.length){s.discard.push(s.deck.shift());this.log('山札の一番上のカードをトラッシュ！');}
         if(ge.discardTopOpponentDeck&&opp.deck.length){opp.discard.push(opp.deck.shift());this.log('相手の山札の一番上のカードをトラッシュ！');}
         if(ge.drawCards){const before=s.hand.length;this.drawCards(side,Number(ge.drawCards));const drawn=s.hand.length-before;this.log(`${getCardDisplayName(attC)}のワザ効果：山札を${drawn}枚引いた！`);}
+        if(ge.searchDeckTarget)this.resolveRandomDeckSearch(side,ge,'ワザの効果');
         const selfDamageAmount=atk.fx==='selfdmg30'?30:Number(ge.selfDamage||0)||((ge.selfDamageOnTails&&coinHeads===0)?Number(ge.selfDamageOnTails):0);
         const selfDamageAttack = selfDamageAmount>0;
         if (selfDamageAttack) s.active.hp -= selfDamageAmount;
@@ -9965,6 +10060,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatuses) ge.opponentStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfHeads&&coinHeads>0) ge.opponentStatusesIfHeads.forEach(status=>this.applySpecialCondition(opp.active,status));
+        if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfTails&&coinHeads===0) ge.opponentStatusesIfTails.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfAtLeastHeads&&coinHeads>=Number(ge.opponentStatusesIfAtLeastHeads.count||1)) ge.opponentStatusesIfAtLeastHeads.statuses.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(s.active&&ge.selfStatuses) ge.selfStatuses.forEach(status=>this.applySpecialCondition(s.active,status));
         if(ge.bothActiveStatuses){
@@ -9983,6 +10079,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(ge.selfCannotAttackNextTurn){
           s.active.attackBlockedUntilTurn=this.turn+2;
           this.log('次の自分の番、このポケモンはワザを使えない！');
+        }
+        if(ge.selfCannotAttackNextTurnIfTails&&coinRolls>0&&coinHeads===0){
+          s.active.attackBlockedUntilTurn=this.turn+2;
+          this.log('コインがウラ！次の自分の番、このポケモンはワザを使えない！');
         }
         if(ge.opponentSupporterLockNextTurn){
           opp.supporterBlockedUntilTurn=this.turn+1;
@@ -10400,6 +10500,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if (!this.pendingPromotionNext) this.pendingPromotionNext = { side: 'player', incrementTurn: true, onlinePassTurn: false };
           return;
         }
+        if(this.currentSide!=='opp')return;
 
         this.render();
         setTimeout(() => {
