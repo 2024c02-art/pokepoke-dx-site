@@ -6,7 +6,22 @@ const start = html.indexOf('function applySupplementalCardData(');
 const end = html.indexOf('// Supplemental card data:', start);
 assert.ok(start >= 0 && end > start, 'the source merge helper must exist');
 const hasJapaneseText = value => /[\u3040-\u30ff\u3400-\u9fff]/.test(String(value || ''));
-const apply = new Function('hasJapaneseText', html.slice(start,end)+'; return applySupplementalCardData;')(hasJapaneseText);
+const applyMethod = new Function('hasJapaneseText', html.slice(start,end)+'; return applySupplementalCardData;')(hasJapaneseText);
+const parserStart = html.indexOf('\n      parseGenericAbility(');
+const parserEnd = html.indexOf('\n      },', parserStart);
+assert.ok(parserStart >= 0 && parserEnd > parserStart, 'generic Ability parser must exist');
+const parseGenericAbility = new Function('return ({' + html.slice(parserStart, parserEnd + 8) + '}).parseGenericAbility;')();
+const energyMap = { G:'Grass', R:'Fire', W:'Water', L:'Lightning', P:'Psychic', F:'Fighting', D:'Darkness', M:'Metal', C:'Colorless' };
+const abilityParserContext = {
+  energyMap,
+  energyEffectType(code) {
+    const key = String(code || '').trim().toUpperCase();
+    return energyMap[key] || ({GRASS:'Grass',FIRE:'Fire',WATER:'Water',LIGHTNING:'Lightning',PSYCHIC:'Psychic',FIGHTING:'Fighting',DARKNESS:'Darkness',METAL:'Metal',COLORLESS:'Colorless',DRAGON:'Dragon'})[key] || null;
+  }
+};
+const apply = (...args) => applyMethod.apply({
+  parseGenericAbility(text) { return parseGenericAbility.call(abilityParserContext, text); }
+}, args);
 function makeCard(){ return {id:'test',category:'Catalog',type:'Colorless',name:'テスト',collectionOnly:true}; }
 const druddigonA1a = makeCard();
 apply(druddigonA1a,{
