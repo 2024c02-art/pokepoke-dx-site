@@ -9970,6 +9970,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         const attC = CARD_MAP[s.active.cardId];
         const attackingInst = s.active;
+        const attackerIsStillActive = () => s.active === attackingInst;
         const declaredAtk = attC.attacks[atkIdx];
         if (!declaredAtk) return;
         if(Number(s.active.attackNameBlockUntilTurn||0)>=this.turn && Array.isArray(s.active.blockedAttackNames) && s.active.blockedAttackNames.includes(String(declaredAtk.name||''))){
@@ -10234,7 +10235,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           this.log(getCardDisplayName(CARD_MAP[opp.active.cardId])+'の特性！攻撃した'+getCardDisplayName(attC)+'に'+counter+'ダメージ！');
           this.checkKO(side,'active',0);
         }
-        if(ge.selfHealEqualDamageDone && dmg>0){s.active.hp=Math.min(s.active.maxHp,s.active.hp+dmg);this.log(`${getCardDisplayName(attC)}は与えたダメージと同じ${dmg}ダメージ分、HPを回復！`);}
+        if(attackerIsStillActive()&&ge.selfHealEqualDamageDone&&dmg>0){attackingInst.hp=Math.min(attackingInst.maxHp,attackingInst.hp+dmg);this.log(`${getCardDisplayName(attC)}は与えたダメージと同じ${dmg}ダメージ分、HPを回復！`);}
         if(ge.opponentPokemonDamage>0&&choice?.targetZone){
           const target=choice.targetZone==='active'?opp.active:opp.bench[choice.targetIndex];
           if(target){
@@ -10250,26 +10251,26 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfHeads&&coinHeads>0) ge.opponentStatusesIfHeads.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfTails&&coinHeads===0) ge.opponentStatusesIfTails.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfAtLeastHeads&&coinHeads>=Number(ge.opponentStatusesIfAtLeastHeads.count||1)) ge.opponentStatusesIfAtLeastHeads.statuses.forEach(status=>this.applySpecialCondition(opp.active,status));
-        if(s.active&&ge.selfStatuses) ge.selfStatuses.forEach(status=>this.applySpecialCondition(s.active,status));
+        if(attackerIsStillActive()&&ge.selfStatuses) ge.selfStatuses.forEach(status=>this.applySpecialCondition(attackingInst,status));
         if(ge.bothActiveStatuses){
-          if(s.active) ge.bothActiveStatuses.forEach(status=>this.applySpecialCondition(s.active,status));
+          if(attackerIsStillActive()) ge.bothActiveStatuses.forEach(status=>this.applySpecialCondition(attackingInst,status));
           if(opp.active&&!opponentActiveProtected) ge.bothActiveStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
         }
-        if(ge.preventAttackDamageNextTurnIfHeads&&coinHeads>0){
-          s.active.preventAttackDamageUntilTurn=this.turn+1;
+        if(attackerIsStillActive()&&ge.preventAttackDamageNextTurnIfHeads&&coinHeads>0){
+          attackingInst.preventAttackDamageUntilTurn=this.turn+1;
           this.log('次の相手の番、このポケモンはワザのダメージと効果を受けない！');
         }
-        if(ge.selfAttackDamageReductionNextTurn>0){
-          s.active.attackDamageReduction=Number(ge.selfAttackDamageReductionNextTurn);
-          s.active.attackDamageReductionUntilTurn=this.turn+1;
-          this.log(`次の相手の番、このポケモンが受けるワザのダメージを${s.active.attackDamageReduction}軽減！`);
+        if(attackerIsStillActive()&&ge.selfAttackDamageReductionNextTurn>0){
+          attackingInst.attackDamageReduction=Number(ge.selfAttackDamageReductionNextTurn);
+          attackingInst.attackDamageReductionUntilTurn=this.turn+1;
+          this.log(`次の相手の番、このポケモンが受けるワザのダメージを${attackingInst.attackDamageReduction}軽減！`);
         }
-        if(ge.selfCannotAttackNextTurn){
-          s.active.attackBlockedUntilTurn=this.turn+2;
+        if(attackerIsStillActive()&&ge.selfCannotAttackNextTurn){
+          attackingInst.attackBlockedUntilTurn=this.turn+2;
           this.log('次の自分の番、このポケモンはワザを使えない！');
         }
-        if(ge.selfCannotAttackNextTurnIfTails&&coinRolls>0&&coinHeads===0){
-          s.active.attackBlockedUntilTurn=this.turn+2;
+        if(attackerIsStillActive()&&ge.selfCannotAttackNextTurnIfTails&&coinRolls>0&&coinHeads===0){
+          attackingInst.attackBlockedUntilTurn=this.turn+2;
           this.log('コインがウラ！次の自分の番、このポケモンはワザを使えない！');
         }
         if(ge.opponentSupporterLockNextTurn){
