@@ -6994,7 +6994,7 @@ const PACK_CATALOG_DATA = {
         if(/^Discard a random Energy from your opponent's Active (?:Pokémon|Pokemon)$/i.test(t)) return {discardOpponentRandomEnergy:1};
         if((m=t.match(/^Discard all \[([A-Za-z]+)\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardAllEnergyType:this.energyEffectType(m[1])};
         if(/^Discard all Energy from this (?:Pokémon|Pokemon)$/i.test(t)) return {discardAllEnergy:true};
-        if(/^Discard a random Energy from this (?:Pokémon|Pokemon)$/i.test(t)) return {discardRandomEnergy:1};
+        if((m=t.match(/^Discard (?:a|1|(\d+)) random Energy from this (?:Pokémon|Pokemon)$/i))) return {discardRandomEnergyCount:Number(m[1]||1)};
         if((m=t.match(/^Discard (?:a|an) \[([A-Za-z]+)\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:1,energyType:this.energyEffectType(m[1])};
         if((m=t.match(/^Discard (\d+) \[([A-Za-z]+)\] Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:Number(m[1]),energyType:this.energyEffectType(m[2])};
         if(/^Discard the top card of your deck$/i.test(t)) return {discardTopDeck:1};
@@ -7020,6 +7020,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^Flip a coin for each (?:Pokémon|Pokemon) you have in play\. This attack does (\d+) damage for each heads$/i))) return {coinPerPokemon:true,coinDamagePerHeads:Number(m[1])};
         if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon do [−–-](\d+) damage$/i))) return {defendingAttackDamageReductionNextTurn:Number(m[1])};
         if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon cost (\d+) more, and its Retreat Cost is (\d+) more$/i))) return {defendingAttackCostIncreaseNextTurn:Number(m[1]),defendingRetreatCostIncreaseNextTurn:Number(m[2])};
+        if((m=t.match(/^During your opponent's next turn, attacks used by the Defending Pokémon cost (\d+) more \[([A-Za-z]+)\]$/i))) return {defendingAttackCostIncreaseNextTurn:Number(m[1]),defendingAttackCostType:this.energyEffectType(m[2])};
         if(/^During your opponent's next turn, the Defending Pokémon can't attack$/i.test(t)) return {defendingCannotAttackNextTurn:true};
         if(/^If the Defending Pokémon is a Basic Pokémon, it can't attack during your opponent's next turn$/i.test(t)) return {defendingCannotAttackNextTurnIfBasic:true};
         if(/^During your opponent's next turn, if the Defending Pokémon tries to use an attack, your opponent flips a coin\. If tails, that attack doesn't happen$/i.test(t)) return {defendingAttackFailureOnTailsNextTurn:true};
@@ -7153,6 +7154,7 @@ const PACK_CATALOG_DATA = {
         if(/^Your opponent can't play any (?:Pokémon|Pokemon) from their hand to evolve their Active (?:Pokémon|Pokemon)$/i.test(t))return {passive:true,preventOpponentActiveEvolution:true};
         if((m=t.match(/^At the end of your first turn, take a \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to this (?:Pokémon|Pokemon)$/i)))return {passive:true,firstTurnAttachEnergyType:typeOf(m[1])};
         if((m=t.match(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, attacks used by your opponent's Active (?:Pokémon|Pokemon) cost (\d+) \[([A-Za-z]+)\] more$/i)))return {passive:true,opponentActiveAttackCostIncrease:Number(m[1]),opponentActiveAttackCostType:typeOf(m[2])};
+        if((m=t.match(/^If you have another ([A-Za-z][A-Za-z0-9'♀♂ .-]*) in play, this (?:Pokémon|Pokemon)'s attacks do \+(\d+) damage to your opponent's Active (?:Pokémon|Pokemon), and this (?:Pokémon|Pokemon) takes [−–-](\d+) damage from attacks from your opponent's (?:Pokémon|Pokemon)$/i)))return {passive:true,passiveAttackDamageBonusIfAnotherNamedPokemonInPlay:m[1].trim(),passiveAttackDamageBonus:Number(m[2]),passiveDamageReductionIfAnotherNamedPokemonInPlay:m[1].trim(),passiveDamageReduction:Number(m[3])};
         if((m=t.match(/^During (?:Pokémon|Pokemon) Checkup, if this (?:Pokémon|Pokemon) is in the Active Spot, do (\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {passive:true,checkupDamageOpponentActive:Number(m[1])};
         if((m=t.match(/^During (?:Pokémon|Pokemon) Checkup, heal (\d+) damage from each of your (?:Pokémon|Pokemon)$/i)))return {passive:true,checkupHealEachOwn:Number(m[1])};
         if((m=t.match(/^At the end of your turn, if this (?:Pokémon|Pokemon) is in the Active Spot, heal (\d+) damage from it$/i)))return {passive:true,endTurnHealSelf:Number(m[1])};
@@ -9511,11 +9513,13 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const pool=multiplierApplies?rawPool.flatMap(type=>Array(Math.max(1,Number(type===energyMultiplier.energyType?energyMultiplier.energyMultiplier:1))).fill(type)):rawPool;
         const opposingBoard=side==='player'?this.o:this.p;
         const opponentAbility=inst===board?.active?CARD_MAP[opposingBoard?.active?.cardId]?.ability?.genericEffect:null;
+        const temporaryExtra=Number(inst?.attackCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.attackCostIncrease||0)):0;
         const passiveExtra=Number(opponentAbility?.opponentActiveAttackCostIncrease||0);
-        const extraCost=(Number(inst?.attackCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.attackCostIncrease||0)):0)+passiveExtra;
+        const temporaryType=inst?.attackCostIncreaseType||'Colorless';
+        const passiveType=opponentAbility?.opponentActiveAttackCostType||'Colorless';
         const ownAbility=CARD_MAP[inst?.cardId]?.ability?.genericEffect;
         const colorlessDiscount=ownAbility?.attackCostReductionIfNamedPokemonInPlay&&this.hasPokemonNamed(side,ownAbility.attackCostReductionIfNamedPokemonInPlay)&&ownAbility.attackCostReductionType==='Colorless'?Number(ownAbility.attackCostReduction||0):0;
-        const required=[...(cost||[]),...Array(extraCost).fill('Colorless')];
+        const required=[...(cost||[]),...Array(temporaryExtra).fill(temporaryType),...Array(passiveExtra).fill(passiveType)];
         let remainingColorless=Math.max(0,required.filter(x=>x==='Colorless').length-colorlessDiscount);
         for(const r of required.filter(x=>x!=='Colorless')){
           const i=pool.indexOf(r);if(i===-1)return false;pool.splice(i,1);
@@ -9538,6 +9542,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(effect?.passiveDamageReduction>0&&(!types.length||(attackerType&&types.includes(attackerType)))&&(!effect.passiveDamageReductionActiveOnly||active))damage-=Number(effect.passiveDamageReduction);
         const defendingSide=this.p?.active===inst||this.p?.bench?.includes(inst)?'player':'opp';
         if(effect?.passiveDamageReductionIfNamedPokemonInPlay&&this.hasPokemonNamed(defendingSide,effect.passiveDamageReductionIfNamedPokemonInPlay))damage-=Number(effect.passiveDamageReduction||0);
+        if(effect?.passiveDamageReductionIfAnotherNamedPokemonInPlay){
+          const board=defendingSide==='player'?this.p:this.o;
+          const wanted=String(effect.passiveDamageReductionIfAnotherNamedPokemonInPlay).trim().toLowerCase();
+          const hasAnother=[board?.active,...(board?.bench||[])].filter(p=>p&&p!==inst).some(p=>{
+            const card=CARD_MAP[p.cardId]||{};
+            return [card.sourceNameEN,card.name,card.jpName,card.enDetail?.name].filter(Boolean)
+              .some(value=>String(value).trim().toLowerCase()===wanted||String(value).trim().toLowerCase()===wanted+' ex');
+          });
+          if(hasAnother)damage-=Number(effect.passiveDamageReduction||0);
+        }
         return Math.max(0,damage);
       },
 
@@ -9563,6 +9577,15 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const attackerAbility=attC.ability?.genericEffect;
         if(attackerAbility?.passiveAttackDamageBonusIfNamedPokemonInPlay&&this.hasPokemonNamed(side,attackerAbility.passiveAttackDamageBonusIfNamedPokemonInPlay)){
           dmg+=Number(attackerAbility.passiveAttackDamageBonus||0);
+        }
+        if(attackerAbility?.passiveAttackDamageBonusIfAnotherNamedPokemonInPlay){
+          const wanted=String(attackerAbility.passiveAttackDamageBonusIfAnotherNamedPokemonInPlay).trim().toLowerCase();
+          const hasAnother=[s.active,...s.bench].filter(p=>p&&p!==attInst).some(p=>{
+            const card=CARD_MAP[p.cardId]||{};
+            return [card.sourceNameEN,card.name,card.jpName,card.enDetail?.name].filter(Boolean)
+              .some(value=>String(value).trim().toLowerCase()===wanted||String(value).trim().toLowerCase()===wanted+' ex');
+          });
+          if(hasAnother)dmg+=Number(attackerAbility.passiveAttackDamageBonus||0);
         }
         if(atk.genericEffect?.bonusPerOpponentPoint) dmg += Number(atk.genericEffect.bonusPerOpponentPoint||0)*Number(opp.points||0);
         if(atk.genericEffect?.bonusPerEnergy) dmg += Number(atk.genericEffect.bonusPerEnergy||0)*attInst.energies.length;
@@ -10195,7 +10218,15 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         if(ge.discardAllEnergyType){const type=ge.discardAllEnergyType,before=s.active.energies.length;s.active.energies=s.active.energies.filter(e=>e!==type);const removed=before-s.active.energies.length;if(removed)this.log(`${getCardDisplayName(attC)}のワザ効果：${TYPE_META[type]?.code||type}エネルギーをすべてトラッシュ。`);}
         if(ge.discardAllEnergy){const removed=s.active.energies.length;s.active.energies=[];if(removed)this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをすべてトラッシュ。`);}
-        if(ge.discardRandomEnergy&&s.active.energies.length){const index=Math.floor(Math.random()*s.active.energies.length);s.active.energies.splice(index,1);this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをランダムに1個トラッシュ。`);}
+        if((ge.discardRandomEnergyCount||ge.discardRandomEnergy)&&s.active.energies.length){
+          const discardCount=Math.max(1,Math.floor(Number(ge.discardRandomEnergyCount||ge.discardRandomEnergy)||1));
+          let discarded=0;
+          for(let n=0;n<discardCount&&s.active.energies.length;n++){
+            const index=Math.floor(Math.random()*s.active.energies.length);
+            s.active.energies.splice(index,1);discarded++;
+          }
+          this.log(`${getCardDisplayName(attC)}のワザ効果：エネルギーをランダムに${discarded}個トラッシュ。`);
+        }
         const randomEnergyZones=ge.discardRandomEnergyFromAll?[s.active,...s.bench,opp.active,...opp.bench]:ge.discardRandomEnergyFromOwn?[s.active,...s.bench]:ge.discardRandomEnergyFromActives?[s.active,opp.active]:null;
         const randomEnergyDiscardCount=Number(ge.discardRandomEnergyFromAll||ge.discardRandomEnergyFromOwn||ge.discardRandomEnergyFromActives||0);
         for(let n=0;n<randomEnergyDiscardCount&&randomEnergyZones;n++){
@@ -10312,6 +10343,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         if(!opponentActiveProtected&&ge.defendingAttackCostIncreaseNextTurn>0){
           opp.active.attackCostIncrease=Number(ge.defendingAttackCostIncreaseNextTurn);
+          opp.active.attackCostIncreaseType=ge.defendingAttackCostType||'Colorless';
           opp.active.attackCostIncreaseUntilTurn=this.turn+1;
           this.log(`相手の次の番、このポケモンのワザにエネルギー${opp.active.attackCostIncrease}個分追加！`);
         }
