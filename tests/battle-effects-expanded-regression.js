@@ -25,6 +25,8 @@ const cases=[
   ["If your opponent's Active Pokémon has an Ability, this attack does 40 more damage.",'bonusIfOpponentHasAbility',40],
   ["If you played a Supporter card from your hand during this turn, this attack does 50 more damage.",'bonusIfSupporterPlayedThisTurn',50],
   ["If the Defending Pokémon is a Basic Pokémon, this attack does 30 more damage.",'bonusIfOpponentIsBasic',30],
+  ["If your opponent's Active Pokémon has a Pokémon Tool attached, this attack does 30 more damage.",'bonusIfOpponentHasTool',30],
+  ["This attack does 40 damage for each Pokémon Tool attached to all of your Pokémon",'damagePerPokemonToolAttached',40],
   ["If 1 of your Pokémon used Sweets Relay during your last turn, this attack does 20 more damage.",'bonusIfSweetsRelayLastTurn',20],
   ["This attack does 40 damage for each time your Pokémon used Sweets Relay during this game.",'bonusPerSweetsRelayUsedThisGame',40],
   ["If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does 60 more damage.",'bonusIfPokemonKnockedOutLastTurn',60],
@@ -83,6 +85,16 @@ assert.equal(calc.call(engine,attacker,
   {...baseAttack,genericEffect:movedActiveEffect},def,'player').final,50,
   'a Pokémon that did not move from the Bench gets no bonus');
 assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfOpponentHasAbility:40}},def,'player').final,90,'ability bonus');
+def={cardId:'targetAbility',hp:100,maxHp:100,energies:[],tool:'tool'};
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfOpponentHasTool:30}},def,'player').final,80,
+  'opponent Tool bonus requires a Tool attached to the Active Pokémon');
+def={cardId:'targetAbility',hp:100,maxHp:100,energies:[]};
+engine.p.active={...attacker,tool:'toolA'};
+engine.p.bench=[{cardId:'attacker',tool:'toolB'},{cardId:'attacker',tool:null}];
+assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{damagePerPokemonToolAttached:40}},def,'player').final,130,
+  'damage scales with each attached Pokémon Tool across own field');
+engine.p.active=null;
+engine.p.bench=[];
 engine.p.supporterUsed=true;
 assert.equal(calc.call(engine,{...attacker},{...baseAttack,genericEffect:{bonusIfSupporterPlayedThisTurn:50}},def,'player').final,100,'supporter bonus');
 engine.p.supporterUsed=false;
