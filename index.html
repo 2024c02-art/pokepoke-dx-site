@@ -8206,7 +8206,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       p: null, o: null, logs: [], draggingEnergy: false, ghostEl: null,
       actionLocked: false, localSetupReady: false, remoteSetupReady: false,
       setupStarted: false, promotionModalOpen: false, pendingSelfKO: false,
-      pendingPromotionNext: null, pendingRemotePassTurn: false,
+      pendingPromotionNext: null, pendingRemotePassTurn: false, pendingCpuPromotionAfterPlayer: false,
       localBoardRevision: 0, remoteBoardRevision: 0,
       resolvingAttackSide: null, sessionId: 0,
       pendingRareCandy: false, pendingGenomeAttack: null,
@@ -10481,6 +10481,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           for(const {owner,inst} of knockedOut){
             const card=CARD_MAP[inst.cardId]||{};
             const points=Number(card.pointValue)||(card.isEx?2:1);
+            if(attackingSide&&owner===defenderSide){
+              const previous=boards[owner].lastKOByOpponentAttack;
+              const record=previous&&Number(previous.turn)===this.turn?previous:{turn:this.turn,types:[]};
+              record.types=[...new Set([...(Array.isArray(record.types)?record.types:[]),card.type].filter(Boolean))];
+              boards[owner].lastKOByOpponentAttack=record;
+            }
             const recipient=owner==='player'?this.o:this.p;
             recipient.points=Math.min(3,Number(recipient.points||0)+points);
             boards[owner].discard.push(...(inst.under||[]),inst.cardId);
@@ -10508,11 +10514,17 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }
           return false;
         }
-        if(!this.isOnlineP2P&&!this.o.active&&this.o.bench.length){
+        const playerNeedsPromotion=!this.p.active&&this.p.bench.length>0;
+        const cpuNeedsPromotion=!this.o.active&&this.o.bench.length>0;
+        const playerPromotesFirst=afterCheckup?nextSide==='player':afterAttack&&attackingSide==='opp';
+        this.pendingCpuPromotionAfterPlayer=false;
+        if(!this.isOnlineP2P&&playerNeedsPromotion&&cpuNeedsPromotion&&playerPromotesFirst){
+          this.pendingCpuPromotionAfterPlayer=true;
+        }else if(!this.isOnlineP2P&&cpuNeedsPromotion){
           this.o.active=this.o.bench.shift();
           this.log(`相手は${getCardDisplayName(CARD_MAP[this.o.active.cardId])}をバトル場に出した！`);
         }
-        if(!this.p.active&&this.p.bench.length){
+        if(playerNeedsPromotion){
           this.pendingSelfKO=true;
           if(afterCheckup){
             this.pendingPromotionNext={side:nextSide||'player',incrementTurn:false,onlinePassTurn:this.isOnlineP2P&&nextSide==='opp'};
@@ -10608,6 +10620,13 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           this.promotionModalOpen = false; this.pendingSelfKO = false; this.actionLocked = false;
         }
         this.log(`${getCardDisplayName(CARD_MAP[s.active.cardId])}をバトル場に出した！`);
+        if(side==='player'&&this.pendingCpuPromotionAfterPlayer){
+          this.pendingCpuPromotionAfterPlayer=false;
+          if(!this.isOnlineP2P&&!this.o.active&&this.o.bench.length){
+            this.o.active=this.o.bench.shift();
+            this.log(`相手は${getCardDisplayName(CARD_MAP[this.o.active.cardId])}をバトル場に出した！`);
+          }
+        }
         const pending = side === 'player' ? this.pendingPromotionNext : null;
         if (side === 'player') this.pendingPromotionNext = null;
         this.render();
@@ -10937,7 +10956,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.actionLocked = false; this.pendingRareCandy = false; this.pendingGenomeAttack = null;
         this.pendingAttackChoice = null; this.pendingRetreat = null;
         this.pendingGustChoice = null; this.pendingRemoteChoice = null; clearTimeout(this.remoteChoiceTimer);
-        this.pendingSelfKO = false; this.pendingPromotionNext = null; this.pendingRemotePassTurn = false;
+        this.pendingSelfKO = false; this.pendingPromotionNext = null; this.pendingRemotePassTurn = false; this.pendingCpuPromotionAfterPlayer = false;
         this.promotionModalOpen = false;
         document.getElementById('modal-select')?.classList.add('hidden');
         battleVfx.stop();
