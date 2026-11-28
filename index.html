@@ -7134,6 +7134,7 @@ const PACK_CATALOG_DATA = {
         if(/^At the end of your turn, if this (?:Pokémon|Pokemon) is in the Active Spot, draw a card$/i.test(t))return {passive:true,endTurnDrawCards:1};
         if((m=t.match(/^At the end of each turn, if your opponent's Active (?:Pokémon|Pokemon) is Asleep, do (\d+) damage to that (?:Pokémon|Pokemon)$/i)))return {passive:true,damageOpponentIfAsleepAtCheckup:Number(m[1])};
         if((m=t.match(/^Your opponent's Active (?:Pokémon|Pokemon) takes \+(\d+) damage from being Poisoned$/i)))return {passive:true,opponentPoisonCheckupBonus:Number(m[1])};
+        if(/^Your Active (?:Pokémon|Pokemon) has no Retreat Cost$/i.test(t))return {passive:true,activeRetreatCostZero:true};
         if(/^If this (?:Pokémon|Pokemon) has any Energy attached, it has no Retreat Cost$/i.test(t))return {passive:true,retreatCostZeroIfHasEnergy:true};
         if((m=t.match(/^As long as this (?:Pokémon|Pokemon) is on your Bench, your Active Basic (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,activeBasicRetreatCostReduction:Number(m[1])};
         if(/^During your first turn, this (?:Pokémon|Pokemon) has no Retreat Cost$/i.test(t))return {passive:true,retreatCostZeroFirstTurn:true};
@@ -10557,6 +10558,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(ownEffect.retreatCostZeroIfHasEnergy&&inst.energies?.length)return 0;
         if(ownEffect.retreatCostZeroFirstTurn&&this.isOwnFirstTurn(side))return 0;
         if(ownEffect.retreatCostZeroIfNamedPokemonInPlay&&this.hasPokemonNamed(side,ownEffect.retreatCostZeroIfNamedPokemonInPlay))return 0;
+        if(inst===board?.active&&[board?.active,...(board?.bench||[])].filter(Boolean).some(p=>CARD_MAP[p.cardId]?.ability?.genericEffect?.activeRetreatCostZero))return 0;
         let cost=Math.max(0,Number(card?.retreat)||0);
         const increase=Number(inst.retreatCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.retreatCostIncrease)||0):0;
         cost+=increase;
