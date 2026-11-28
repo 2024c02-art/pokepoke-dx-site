@@ -7216,6 +7216,8 @@ const PACK_CATALOG_DATA = {
         if(/^This (?:Pokémon|Pokemon) can't be Asleep$/i.test(t))return {passive:true,cannotBeAsleep:true};
         if(/^Prevent all damage done to this (?:Pokémon|Pokemon) by attacks from your opponent's (?:Pokémon|Pokemon) ex$/i.test(t))return {passive:true,preventDamageFromOpponentEx:true};
         if((m=t.match(/^Each \[([A-Za-z]+)\] Energy attached to your \[([A-Za-z]+)\] (?:Pokémon|Pokemon) provides (\d+) \[([A-Za-z]+)\] Energy\. This effect doesn't stack$/i)))return {passive:true,energyMultiplier:Number(m[3]),energyType:typeOf(m[1]),pokemonType:typeOf(m[2]),providedEnergyType:typeOf(m[4])};
+        if((m=t.match(/^Attacks used by your \[([A-Za-z]+)\] (?:Pokémon|Pokemon) and \[([A-Za-z]+)\] (?:Pokémon|Pokemon) do \+(\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {passive:true,passiveAttackDamageBonusTypes:[typeOf(m[1]),typeOf(m[2])].filter(Boolean),passiveAttackDamageBonus:Number(m[3])};
+        if(/^As long as this (?:Pokémon|Pokemon) is on your Bench, prevent all damage done to this (?:Pokémon|Pokemon) by attacks$/i.test(t))return {passive:true,preventDamageWhileBenched:true};
         if((m=t.match(/^Attacks used by your \[([A-Za-z]+)\] (?:Pokémon|Pokemon) do \+(\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {passive:true,passiveAttackDamageBonusType:typeOf(m[1]),passiveAttackDamageBonus:Number(m[2])};
         if((m=t.match(/^If you have Arceus(?: or Arceus)?(?: ex)? in play, attacks used by this (?:Pokémon|Pokemon) do \+(\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {passive:true,passiveAttackDamageBonusIfNamedPokemonInPlay:'Arceus',passiveAttackDamageBonus:Number(m[1])};
         if(/^If you have Arceus(?: or Arceus)?(?: ex)? in play, this (?:Pokémon|Pokemon) has no Retreat Cost$/i.test(t))return {passive:true,retreatCostZeroIfNamedPokemonInPlay:'Arceus'};
@@ -9981,6 +9983,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(attackerIsEx&&CARD_MAP[inst?.cardId]?.ability?.genericEffect?.preventDamageFromOpponentEx)return 0;
         if(inst && Number(inst.attackDamageReductionUntilTurn||0)>=this.turn) damage-=Math.max(0,Number(inst.attackDamageReduction)||0);
         const effect=inst&&CARD_MAP[inst.cardId]?.ability?.genericEffect,active=!!inst&&(this.p?.active===inst||this.o?.active===inst),types=effect?.passiveDamageReductionTypes||[];
+        if(effect?.preventDamageWhileBenched&&!active)return 0;
         const reductionUsesNamedPokemonCondition=!!(effect?.passiveDamageReductionIfNamedPokemonInPlay||effect?.passiveDamageReductionIfAnotherNamedPokemonInPlay);
         if(effect?.passiveDamageReduction>0&&!reductionUsesNamedPokemonCondition&&(!types.length||(attackerType&&types.includes(attackerType)))&&(!effect.passiveDamageReductionActiveOnly||active))damage-=Number(effect.passiveDamageReduction);
         const defendingSide=this.p?.active===inst||this.p?.bench?.includes(inst)?'player':'opp';
@@ -10016,7 +10019,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         let dmg = atk.genericEffect?.damageEqualsRemainingHp ? Math.max(0,Number(attInst.hp)||0) + bonus : atk.damage + bonus;
         const teamAttackBonus=[s.active,...s.bench].filter(Boolean).reduce((sum,p)=>{
           const effect=CARD_MAP[p.cardId]?.ability?.genericEffect;
-          return sum+(effect?.passiveAttackDamageBonusType===attC.type?Number(effect.passiveAttackDamageBonus||0):0);
+          const boostTypes=Array.isArray(effect?.passiveAttackDamageBonusTypes)?effect.passiveAttackDamageBonusTypes:[effect?.passiveAttackDamageBonusType].filter(Boolean);
+          return sum+(boostTypes.includes(attC.type)?Number(effect.passiveAttackDamageBonus||0):0);
         },0);
         dmg+=teamAttackBonus;
         if(atk.genericEffect?.bonusIfSelfHasTool&&attInst.tool)dmg+=Number(atk.genericEffect.bonusIfSelfHasTool);
