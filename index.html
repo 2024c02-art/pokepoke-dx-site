@@ -7129,6 +7129,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If this (?:Pokémon|Pokemon) evolved during this turn, this attack does (\d+) more damage$/i)))return {bonusIfEvolvedThisTurn:Number(m[1])};
         if((m=t.match(/^If this (?:Pokémon|Pokemon) moved from your Bench to the Active Spot this turn, this attack does (\d+) more damage$/i)))return {bonusIfMovedFromBenchToActive:Number(m[1])};
         if(/^Discard a card from your hand\. If you can't, this attack does nothing$/i.test(t))return {discardHandCardOrFail:true};
+        if((m=t.match(/^During your next turn, this (?:Pokémon|Pokemon)'s (.+?) attack does \+?(\d+) damage$/i)))return {nextTurnAttackDamageBonus:Number(m[2]),nextTurnAttackName:m[1].trim()};
         const clauses=t.split(/(?<=\.)\s+(?=[A-Z])/);
         if(clauses.length>1){const combined={};for(const clause of clauses){const part=this.parseGenericEffect(clause);if(part)Object.assign(combined,part);}if(Object.keys(combined).length)return combined;}
         return null;
@@ -8440,7 +8441,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       createInst(cardId, turnPlayed = 0) {
         const b = CARD_MAP[cardId];
-        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], tool: null, turnPlayed, movedToActiveTurn: null, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, attackNameBlockUntilTurn: 0, attackCostIncrease: 0, attackCostIncreaseUntilTurn: 0, retreatCostIncrease: 0, retreatCostIncreaseUntilTurn: 0, blockedAttackNames: [], under: [] };
+        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], tool: null, turnPlayed, movedToActiveTurn: null, attackNameDamageBonus: 0, attackNameDamageBonusName: null, attackNameDamageBonusUntilTurn: 0, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, attackNameBlockUntilTurn: 0, attackCostIncrease: 0, attackCostIncreaseUntilTurn: 0, retreatCostIncrease: 0, retreatCostIncreaseUntilTurn: 0, blockedAttackNames: [], under: [] };
       },
 
       pickRandomEnergy(types) {
@@ -9868,6 +9869,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(atk.genericEffect?.bonusIfOpponentHasMoreHp&&defInst.hp>attInst.hp)dmg+=Number(atk.genericEffect.bonusIfOpponentHasMoreHp);
         if(atk.genericEffect?.bonusIfEvolvedThisTurn&&Number(attInst.turnPlayed)===this.turn)dmg+=Number(atk.genericEffect.bonusIfEvolvedThisTurn);
         if(atk.genericEffect?.bonusIfMovedFromBenchToActive&&Number(attInst.movedToActiveTurn)===Number(this.turn))dmg+=Number(atk.genericEffect.bonusIfMovedFromBenchToActive);
+        if(Number(attInst.attackNameDamageBonusUntilTurn||0)>=this.turn&&Number(attInst.attackNameDamageBonus||0)>0&&String(attInst.attackNameDamageBonusName||'').trim().toLowerCase()===String(atk.name||'').trim().toLowerCase())dmg+=Number(attInst.attackNameDamageBonus);
 
         switch (atk.fx) {
           case 'bench_lightning30': dmg = s.bench.filter(b => CARD_MAP[b.cardId].type === 'Lightning').length * 30 + bonus; break;
@@ -10617,6 +10619,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(attackerIsStillActive()&&ge.preventAttackDamageNextTurnIfHeads&&coinHeads>0){
           attackingInst.preventAttackDamageUntilTurn=this.turn+1;
           this.log('次の相手の番、このポケモンはワザのダメージと効果を受けない！');
+        }
+        if(ge.nextTurnAttackDamageBonus>0&&ge.nextTurnAttackName&&(s.active===attackingInst||s.bench.includes(attackingInst))){
+          attackingInst.attackNameDamageBonus=Number(ge.nextTurnAttackDamageBonus);
+          attackingInst.attackNameDamageBonusName=String(ge.nextTurnAttackName).trim();
+          attackingInst.attackNameDamageBonusUntilTurn=this.turn+2;
+          this.log(`次の自分の番、${attackingInst.attackNameDamageBonusName}のダメージが+${attackingInst.attackNameDamageBonus}！`);
         }
         if(attackerIsStillActive()&&ge.selfAttackDamageReductionNextTurn>0){
           attackingInst.attackDamageReduction=Number(ge.selfAttackDamageReductionNextTurn);
