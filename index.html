@@ -6617,8 +6617,8 @@ const PACK_CATALOG_DATA = {
   c1_pikachu:{setTotal:217,packTotal:113,coverage:'complete'},c1_mewtwo:{setTotal:217,packTotal:113,coverage:'complete'}
 };
     // v37: connect every distinct pack-catalogue print to the collection system.
-    // Only the 61 hand-authored cards are battle-ready. The rest can be pulled and exchanged,
-    // but are deliberately blocked from decks until their complete battle data is verified.
+    // Supplemental Pokémon are unlocked only when reference gameplay fields are complete,
+    // all attacks are supported, and any Ability has a parsed implementation.
     const CARD_PRINT_MAP = Object.create(null);
     const PACK_CATALOG_PRINTS = Object.create(null);
     const CATALOG_TYPE_MAP = { '草':'Grass', '炎':'Fire', '水':'Water', '雷':'Lightning', '超':'Psychic', '闘':'Fighting', '悪':'Darkness', '鋼':'Metal', '竜':'Dragon', 'ドラゴン':'Dragon', '無':'Colorless' };
