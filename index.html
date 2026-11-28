@@ -6932,6 +6932,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^This attack (?:also )?does (\d+) damage to 1 of your opponent's (?:Pokémon|Pokemon)(?: that (?:has damage on it|have damage on them))?$/i))) return {opponentPokemonDamage:Number(m[1]),opponentPokemonDamageRequiresDamage:/that (?:has damage on it|have damage on them)/i.test(t)};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is (Poisoned|Burned|Asleep|Paralyzed|Confused), this attack does (\d+) more damage$/i))) return {bonusIfOpponentStatus:m[1].toLowerCase(),bonusIfOpponentStatusDamage:Number(m[2])};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is affected by a Special Condition, this attack does (\d+) more damage$/i))) return {bonusIfOpponentSpecialCondition:Number(m[1])};
+        if((m=t.match(/^This attack does (\d+) more damage for each Special Condition affecting your opponent's Active (?:Pokémon|Pokemon)$/i))) return {bonusPerOpponentStatus:Number(m[1])};
         if(/^Flip a coin\. If heads, during your opponent's next turn, prevent all damage from—and effects of—attacks done to this (?:Pokémon|Pokemon)$/i.test(t)) return {preventAttackDamageNextTurnIfHeads:true};
         if(/^During your opponent's next turn, the Defending (?:Pokémon|Pokemon) can't retreat$/i.test(t)) return {defendingCannotRetreatNextTurn:true};
         if((m=t.match(/^During your opponent's next turn, this (?:Pokémon|Pokemon) takes [−-](\d+) damage from attacks$/i))) return {selfAttackDamageReductionNextTurn:Number(m[1])};
@@ -7002,6 +7003,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has an Ability, this attack does (\d+) more damage$/i))) return {bonusIfOpponentHasAbility:Number(m[1])};
         if((m=t.match(/^If you played a Supporter card from your hand during this turn, this attack does (\d+) more damage$/i))) return {bonusIfSupporterPlayedThisTurn:Number(m[1])};
         if((m=t.match(/^If the Defending Pokémon is a Basic Pokémon, this attack does (\d+) more damage$/i))) return {bonusIfOpponentIsBasic:Number(m[1])};
+        if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is a Basic (?:Pokémon|Pokemon), this attack does (\d+) more damage$/i))) return {bonusIfOpponentIsBasic:Number(m[1])};
         if((m=t.match(/^If 1 of your Pokémon used Sweets Relay during your last turn, this attack does (\d+) more damage$/i))) return {bonusIfSweetsRelayLastTurn:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) damage for each time your Pokémon used Sweets Relay during this game$/i))) return {bonusPerSweetsRelayUsedThisGame:Number(m[1])};
         if((m=t.match(/^If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does (\d+) more damage$/i))) return {bonusIfPokemonKnockedOutLastTurn:Number(m[1])};
@@ -9573,6 +9575,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const defenderStatuses=[...(Array.isArray(defInst.statusEffects)?defInst.statusEffects:[]),...(defInst.status?[defInst.status]:[])];
         if(atk.genericEffect?.bonusIfOpponentStatus && defenderStatuses.includes(String(atk.genericEffect.bonusIfOpponentStatus).replace(/^./,c=>c.toUpperCase()))) dmg += Number(atk.genericEffect.bonusIfOpponentStatusDamage||0);
         if(atk.genericEffect?.bonusIfOpponentSpecialCondition && defenderStatuses.length) dmg += Number(atk.genericEffect.bonusIfOpponentSpecialCondition||0);
+        if(atk.genericEffect?.bonusPerOpponentStatus) dmg += Number(atk.genericEffect.bonusPerOpponentStatus||0)*defenderStatuses.length;
         if(atk.genericEffect?.bonusSelfDamage) dmg += Math.max(0,attInst.maxHp-attInst.hp);
         if(atk.genericEffect?.bonusPerUniqueEnergyType) dmg += Number(atk.genericEffect.bonusPerUniqueEnergyType||0)*new Set(attInst.energies).size;
         if(atk.genericEffect?.damageEachOpponent) dmg += Number(atk.genericEffect.damageEachOpponent||0);
