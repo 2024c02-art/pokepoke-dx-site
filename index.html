@@ -7130,7 +7130,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If this (?:Pokémon|Pokemon) moved from your Bench to the Active Spot this turn, this attack does (\d+) more damage$/i)))return {bonusIfMovedFromBenchToActive:Number(m[1])};
         if(/^Discard a card from your hand\. If you can't, this attack does nothing$/i.test(t))return {discardHandCardOrFail:true};
         if((m=t.match(/^During your next turn, this (?:Pokémon|Pokemon)'s (.+?) attack does \+?(\d+) damage$/i)))return {nextTurnAttackDamageBonus:Number(m[2]),nextTurnAttackName:m[1].trim()};
-        if(/^Switch out your opponent's Active (?:Pokémon|Pokemon) to the Bench\. \(Your opponent chooses the new Active (?:Pokémon|Pokemon)\)$/i.test(t))return {switchOpponentActiveToBench:true};
+        if(/^Switch out your opponent's Active (?:Pokémon|Pokemon) to the Bench\. \(Your opponent chooses the new Active (?:Pokémon|Pokemon)\.\)$/i.test(t))return {switchOpponentActiveToBench:true};
         const clauses=t.split(/(?<=\.)\s+(?=[A-Z])/);
         if(clauses.length>1){const combined={};for(const clause of clauses){const part=this.parseGenericEffect(clause);if(part)Object.assign(combined,part);}if(Object.keys(combined).length)return combined;}
         return null;
@@ -7139,7 +7139,7 @@ const PACK_CATALOG_DATA = {
         const t=String(text||'').replace(/\u00a0/g,' ').trim().replace(/[.!。]$/,'');if(!t)return null;
         let m;
         if(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, it can evolve during your first turn or the turn you play it$/i.test(t))return {passive:true,allowEvolutionOnOwnFirstTurn:true,allowEvolutionOnTurnPlayed:true};
-        if((m=t.match(/^Once during your turn, (?:(if this (?:Pokémon|Pokemon) is in the Active Spot, )?you may switch out your opponent's Active (Basic )?(?:Pokémon|Pokemon) to the Bench\. \(Your opponent chooses the new Active (?:Pokémon|Pokemon)\))$/i)))return {action:'switchOpponentActiveToBench',requiresActive:!!m[1],requireBasic:!!m[2]};
+        if((m=t.match(/^Once during your turn, (?:(if this (?:Pokémon|Pokemon) is in the Active Spot, )?you may switch out your opponent's Active (Basic )?(?:Pokémon|Pokemon) to the Bench\. \(Your opponent chooses the new Active (?:Pokémon|Pokemon)\.\))$/i)))return {action:'switchOpponentActiveToBench',requiresActive:!!m[1],requireBasic:!!m[2]};
         if((m=t.match(/^If you have another ([A-Za-z][A-Za-z0-9'♀♂ .-]*) in play, this (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,retreatCostReductionIfAnotherNamedPokemonInPlay:m[1].trim(),retreatCostReduction:Number(m[2])};
         const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
         if((m=t.match(/^If this (?:Pokémon|Pokemon) has a Pokémon Tool attached, attacks used by this (?:Pokémon|Pokemon) cost (\d+) less \[([A-Za-z]+)\] Energy$/i)))return {passive:true,attackCostReductionIfToolAttached:true,attackCostReduction:Number(m[1]),attackCostReductionType:typeOf(m[2])};
@@ -10096,9 +10096,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         else if(ge.action==='switchSelfFromBench'&&board.active&&z==='bench'){const old=board.active;this.clearSpecialConditions(old);board.active=inst;board.active.movedToActiveTurn=this.turn;board.bench[i]=old;this.log(`${ability.name}！特性を持つポケモンをバトル場に出した！`);}
         else if(ge.action==='applyOpponentStatus'||ge.action==='applyOpponentStatusIfHeads'){if(!opp.active){if(side==='player')ui.toast('相手のバトルポケモンがいません');return false;}const heads=ge.action!=='applyOpponentStatusIfHeads'||Math.random()<0.5;if(heads){this.applySpecialCondition(opp.active,ge.status);this.log(`${ability.name}！相手のバトルポケモンを${ge.status}にした！`);}else this.log(`${ability.name}！コイントスはウラ。効果は発動しなかった。`);}
         else if(ge.action==='switchOpponentActiveToBench'){
-          const candidates=opp.bench.filter(p=>!ge.requireBasic||CARD_MAP[p.cardId]?.stage==='Basic');
-          if(!opp.active||!candidates.length){if(side==='player')ui.toast('交代できる相手のベンチポケモンがいません');return false;}
-          if(ge.requireBasic&&candidates.length!==opp.bench.length){opp.bench=opp.bench.filter(p=>CARD_MAP[p.cardId]?.stage==='Basic');}
+          if(!opp.active||opp.bench.length===0||(ge.requireBasic&&CARD_MAP[opp.active.cardId]?.stage!=='Basic')){
+            if(side==='player')ui.toast('交代できる相手のバトルポケモンまたはベンチポケモンがいません');
+            return false;
+          }
           if(!this.resolveOpponentActiveSwitch(side))return false;
         }
         else return false;
