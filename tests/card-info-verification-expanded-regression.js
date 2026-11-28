@@ -105,6 +105,13 @@ card=make();
 apply(card,baseEn,jp({attacks:[{name:'ドラゴンクロー',damage:'90',effect:'相手のバトルポケモンに30ダメージ。'}]}),[attack('Dragon Claw',90,"Do 30 damage to your opponent's Active Pokémon.")],null,'');
 assert.equal(card.dataVerified,true,'equivalent Active target wording should remain verified');
 
+// The target's owner is part of effect meaning, even when the target is Active in both texts.
+card=make();
+apply(card,baseEn,jp({attacks:[{name:'ドラゴンクロー',damage:'90',effect:'相手のバトルポケモンに30ダメージ。'}]}),[attack('Dragon Claw',90,'Do 30 damage to your Active Pokémon.')],null,'');
+assert.equal(card.dataVerified,false,'opponent-vs-own target mismatch must never be marked verified');
+assert.ok(card.dataVerificationIssues.includes('ワザ1対象プレイヤー'),'target-owner mismatch must be reported');
+
+
 console.log('All expanded card-information verification regression checks passed.');
 assert.match(html,/カードの基本情報・ワザ・特性を参照データと収録番号単位で照合済み/);
 assert.match(html,/日本語効果文は参照データに未登録の項目あり/);
