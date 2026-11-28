@@ -6918,6 +6918,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^This (?:Pokémon|Pokemon) also does (\d+) damage to itself$/i))) return {selfDamage:Number(m[1])};
         if((m=t.match(/^Heal (\d+) damage from this (?:Pokémon|Pokemon)$/i))) return {selfHeal:Number(m[1])};
         if((m=t.match(/^Discard (\d+) (?:(Grass|Fire|Water|Lightning|Psychic|Fighting|Darkness|Metal|Colorless|Dragon) )?Energy from this (?:Pokémon|Pokemon)$/i))) return {discardEnergy:Number(m[1]),energyType:m[2]||null};
+        if((m=t.match(/^This attack (?:also )?does (\d+) damage to (up to )?(\d+) of your opponent's Benched (?:Pokémon|Pokemon)$/i))) return {benchDamage:Number(m[1]),benchDamageCount:Number(m[3]),benchDamageUpTo:!!m[2]};
         if((m=t.match(/^This attack (?:also )?does (\d+) damage to 1 of your opponent's Benched (?:Pokémon|Pokemon)$/i))) return {benchDamage:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each point your opponent has taken$/i))) return {bonusPerOpponentPoint:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each Energy attached to this (?:Pokémon|Pokemon)$/i))) return {bonusPerEnergy:Number(m[1])};
@@ -9882,6 +9883,26 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.attack(pend.side, pend.atkIdx, pend.copiedAttackIdx, choice);
       },
 
+      resolveMultiAttackBenchChoice() {
+        const pend=this.pendingAttackChoice;
+        if(!pend||pend.session!==this.sessionId||!pend.multiBench)return;
+        const selected=[...document.querySelectorAll('input[data-multi-attack-bench]:checked')]
+          .map(input=>Number(input.getAttribute('data-multi-attack-bench')));
+        const indices=[...new Set(selected)].filter(index=>Number.isInteger(index)&&index>=0&&index<this.o.bench.length);
+        if(indices.length>Number(pend.maxTargets||0)){
+          ui.toast(`選べるベンチは最大${pend.maxTargets}匹です`);
+          return;
+        }
+        if(indices.length<Number(pend.requiredTargets||0)){
+          ui.toast(`${pend.requiredTargets}匹選択してください`);
+          return;
+        }
+        this.pendingAttackChoice=null;
+        this.actionLocked=false;
+        this.render();
+        this.attack(pend.side,pend.atkIdx,pend.copiedAttackIdx,{benches:indices});
+      },
+
       resolveGenomeHack(side, atkIdx, copiedAttackIdx) {
         if (!this.pendingGenomeAttack || this.pendingGenomeAttack.session !== this.sessionId) return;
         this.pendingGenomeAttack = null;
@@ -9987,6 +10008,28 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const genericOpponentPokemonDamage=Number(atk.genericEffect?.opponentPokemonDamage||atk.genericEffect?.opponentPokemonDamagePerEnergy||0);
         const genericBenchAllDamage=Number(atk.genericEffect?.benchAllDamage||0);
         const pickKind = genericOpponentPokemonDamage>0 ? 'oppPokemon' : (atk.fx === 'bench_snipe30' || genericBenchDamage>0) ? 'oppBench' : (atk.fx === 'metal_turbo' || atk.genericEffect?.switchSelf || atk.genericEffect?.selfBenchDamageTarget>0 || atk.genericEffect?.attachEnergyTarget==='bench' || atk.genericEffect?.moveEnergyToBench) ? 'ownBench' : null;
+        const multiBenchTargetCount=Math.max(1,Math.min(3,Number(atk.genericEffect?.benchDamageCount)||1));
+        if(pickKind==='oppBench'&&multiBenchTargetCount>1&&!choice){
+          const candidates=opp.bench.map((inst,index)=>({inst,index}));
+          if(!candidates.length)choice={benches:[]};
+          else if(side==='player'){
+            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx,multiBench:true,maxTargets:multiBenchTargetCount,requiredTargets:atk.genericEffect?.benchDamageUpTo?0:Math.min(multiBenchTargetCount,candidates.length)};
+            this.actionLocked=true;
+            const html=candidates.map(({inst,index})=>`<label class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex items-center gap-3"><input type="checkbox" data-multi-attack-bench="${index}" class="w-5 h-5" /><span class="flex flex-col items-center">${ui.renderMiniCard(inst.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${inst.hp}/${inst.maxHp}・エネ${inst.energies.length}</span></span></label>`).join('');
+            const attackLabel=getCardDisplayAttackName(CARD_MAP[s.active.cardId],atk,isGenomeHack?copiedAttackIdx:atkIdx);
+            const selectionRule=atk.genericEffect?.benchDamageUpTo?`最大${multiBenchTargetCount}匹`:`${Math.min(multiBenchTargetCount,candidates.length)}匹`;
+            this.render();
+            ui.openSelectModal(`${attackLabel}：ダメージを与える相手のベンチを選択（${selectionRule}）`,`<div class="grid grid-cols-2 gap-2">${html}</div><button class="w-full mt-3 p-3 rounded-xl bg-sky-600 text-white font-black" onclick="battle.resolveMultiAttackBenchChoice();ui.closeSelectModal();">選択を確定</button>`,true);
+            return;
+          }else{
+            const selected=candidates.map(({inst,index})=>{
+              const damage=this.attackDamageAfterDefenses(inst,genericBenchDamage,attC.type,attC.isEx);
+              const score=(inst.hp<=damage?1000:0)-inst.hp;
+              return {index,score};
+            }).sort((a,b)=>b.score-a.score).slice(0,multiBenchTargetCount).map(x=>x.index);
+            choice={benches:selected};
+          }
+        }
         if(pickKind==='oppPokemon'&&!choice){
           const requiresDamage=!!atk.genericEffect?.opponentPokemonDamageRequiresDamage;
           const targets=[...(opp.active?[{z:'active',i:0,inst:opp.active}]:[]),...opp.bench.map((inst,i)=>({z:'bench',i,inst}))].filter(t=>!requiresDamage||t.inst.hp<t.inst.maxHp);
@@ -10156,7 +10199,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           const counter=Number(defendingAbility.counterDamageOnAttack);s.active.hp-=counter;
           this.showDmg(side==='player'?'player-active':'opp-active',counter,false);
           this.log(getCardDisplayName(CARD_MAP[opp.active.cardId])+'の特性！攻撃した'+getCardDisplayName(attC)+'に'+counter+'ダメージ！');
-          this.checkKO(side,'active',0,true);
+          this.checkKO(side,'active',0);
         }
         if(ge.selfHealEqualDamageDone && dmg>0){s.active.hp=Math.min(s.active.maxHp,s.active.hp+dmg);this.log(`${getCardDisplayName(attC)}は与えたダメージと同じ${dmg}ダメージ分、HPを回復！`);}
         if(ge.opponentPokemonDamage>0&&choice?.targetZone){
@@ -10248,13 +10291,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           this.log('相手のベンチ全員にも20ダメージ！');
         }
         if (atk.fx === 'bench_snipe30' && choice && choice.bench >= 0 && opp.bench[choice.bench]) {
-          const target=opp.bench[choice.bench], amount=this.attackDamageAfterDefenses(target,30,attC.type,attC.isEx);
-          target.hp -= amount;
-          this.log(`相手の${getCardDisplayName(CARD_MAP[target.cardId])}にも${amount}ダメージ！`);
-        } else if(genericBenchDamage>0 && choice && choice.bench>=0 && opp.bench[choice.bench]){
-          const target=opp.bench[choice.bench], amount=this.attackDamageAfterDefenses(target,genericBenchDamage,attC.type,attC.isEx);
-          target.hp-=amount;
-          this.log(`相手の${getCardDisplayName(CARD_MAP[target.cardId])}にも${amount}ダメージ！`);
+          this.applyOpponentBenchDamage(side,[choice.bench],30,attC.type,attC.isEx,'ベンチへのワザ');
+        } else if(genericBenchDamage>0){
+          const targetIndices=Number(ge.benchDamageCount)>1
+            ? (Array.isArray(choice?.benches)?choice.benches:[])
+            : (choice&&choice.bench>=0?[choice.bench]:[]);
+          if(targetIndices.length)this.applyOpponentBenchDamage(side,targetIndices,genericBenchDamage,attC.type,attC.isEx,'ベンチへのワザ効果');
         }
         if(genericBenchAllDamage>0 && opp.bench.length){
           const targets=opp.bench.filter(b=>(!ge.damagedBenchOnly||b.hp<b.maxHp)&&(!ge.benchRequiresEnergy||(b.energies?.length||0)>0));
@@ -10343,6 +10385,24 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         el.appendChild(p); setTimeout(() => p.remove(), 1150);
       },
 
+      applyOpponentBenchDamage(side, benchIndices, amount, attackerType=null, attackerIsEx=false, sourceLabel='ワザの効果') {
+        const board=side==='player'?this.o:this.p;
+        const uniqueIndices=[...new Set((Array.isArray(benchIndices)?benchIndices:[benchIndices]).map(Number))]
+          .filter(index=>Number.isInteger(index)&&index>=0&&index<board.bench.length)
+          .sort((a,b)=>a-b);
+        const results=[];
+        for(const index of uniqueIndices){
+          const target=board.bench[index];
+          if(!target||target.hp<=0)continue;
+          const damage=this.attackDamageAfterDefenses(target,Number(amount)||0,attackerType,attackerIsEx);
+          target.hp-=damage;
+          const name=getCardDisplayName(CARD_MAP[target.cardId]);
+          this.log(`${sourceLabel}！${name}に${damage}ダメージ！`);
+          results.push({index,cardId:target.cardId,damage,hp:target.hp});
+        }
+        return results;
+      },
+
       checkKO(defSide, z, i, isBench = false) {
         if (this.over) return false;
         const def = defSide === 'player' ? this.p : this.o;
@@ -10369,7 +10429,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         def.discard.push(...(inst.under || []), inst.cardId);
         att.points = Math.min(3, att.points + pts);
         this.log(`${getCardDisplayName(c)}はきぜつ！（${att.name}に ${pts}ポイント！）`);
-        if(knockedOutByOpponentAttack&&z==='active'&&knockoutAbility?.counterDamageOnKnockout>0&&att.active&&att.active.hp<=0&&!this.over){this.checkKO(attackerSide,'active',0);}
+        if(knockedOutByOpponentAttack&&z==='active'&&knockoutAbility?.counterDamageOnKnockout>0&&att.active&&att.active.hp<=0&&!this.over){
+          this.checkKO(attackerSide,'active',0);
+          if(this.over)return true;
+        }
 
         if (isBench) {
           def.bench.splice(i, 1);
