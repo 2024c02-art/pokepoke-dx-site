@@ -7128,6 +7128,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has more remaining HP than this (?:Pokémon|Pokemon), this attack does (\d+) more damage$/i)))return {bonusIfOpponentHasMoreHp:Number(m[1])};
         if((m=t.match(/^If this (?:Pokémon|Pokemon) evolved during this turn, this attack does (\d+) more damage$/i)))return {bonusIfEvolvedThisTurn:Number(m[1])};
         if((m=t.match(/^If this (?:Pokémon|Pokemon) moved from your Bench to the Active Spot this turn, this attack does (\d+) more damage$/i)))return {bonusIfMovedFromBenchToActive:Number(m[1])};
+        if(/^Discard a card from your hand\. If you can't, this attack does nothing$/i.test(t))return {discardHandCardOrFail:true};
         const clauses=t.split(/(?<=\.)\s+(?=[A-Z])/);
         if(clauses.length>1){const combined={};for(const clause of clauses){const part=this.parseGenericEffect(clause);if(part)Object.assign(combined,part);}if(Object.keys(combined).length)return combined;}
         return null;
@@ -10170,15 +10171,35 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return wasKO;
       },
 
+      resolveDiscardHandAttackChoice(handCardIndex) {
+        const pending=this.pendingAttackChoice;
+        if(!pending||!pending.discardHandCard||pending.session!==this.sessionId)return;
+        const board=pending.side==='player'?this.p:this.o;
+        const index=Number(handCardIndex);
+        if(!Number.isInteger(index)||index<0||index>=board.hand.length)return;
+        const choice={...(pending.choice||{}),handCardIndex:index};
+        this.pendingAttackChoice=null;
+        this.actionLocked=false;
+        this.render();
+        const session=this.sessionId;
+        setTimeout(()=>{
+          if(session!==this.sessionId||this.over)return;
+          this.attack(pending.side,pending.atkIdx,pending.copiedAttackIdx,choice);
+        },0);
+      },
+
       resolveAttackChoice(target, targetIndex = null) {
         const pend = this.pendingAttackChoice;
         if (!pend || pend.session !== this.sessionId) return;
         this.pendingAttackChoice = null;
         this.actionLocked = false;
         this.render();
-        const choice = target==='active'||target==='bench'
-          ? { targetZone:target, targetIndex:Math.max(0,Number(targetIndex)||0) }
-          : { bench:Number(target) };
+        const choice = {
+          ...(pend.choice||{}),
+          ...(target==='active'||target==='bench'
+            ? { targetZone:target, targetIndex:Math.max(0,Number(targetIndex)||0) }
+            : { bench:Number(target) })
+        };
         this.attack(pend.side, pend.atkIdx, pend.copiedAttackIdx, choice);
       },
 
@@ -10200,15 +10221,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.pendingAttackChoice=null;
         this.actionLocked=false;
         this.render();
-        this.attack(pend.side,pend.atkIdx,pend.copiedAttackIdx,{benches:indices,targetSide:pend.targetSide||'opponent'});
+        this.attack(pend.side,pend.atkIdx,pend.copiedAttackIdx,{...(pend.choice||{}),benches:indices,targetSide:pend.targetSide||'opponent'});
       },
 
       resolveGenomeHack(side, atkIdx, copiedAttackIdx) {
         if (!this.pendingGenomeAttack || this.pendingGenomeAttack.session !== this.sessionId) return;
+        const pending=this.pendingGenomeAttack;
         this.pendingGenomeAttack = null;
         this.actionLocked = false;
         this.render();
-        this.attack(side, atkIdx, copiedAttackIdx);
+        this.attack(side, atkIdx, copiedAttackIdx, pending.choice || null);
       },
 
       attack(side, atkIdx, copiedAttackIdx = null, choice = null) {
@@ -10247,11 +10269,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         const isGenomeHack = declaredAtk.fx === 'genome';
         if (!this.canPay(s.active, declaredAtk.cost)) { if (side === 'player') ui.toast('エネルギーが足りません！'); return; }
-        if(['Asleep','Paralyzed'].includes(s.active.status)){
+        if(!choice?.attackStatusResolved&&['Asleep','Paralyzed'].includes(s.active.status)){
           if(side==='player') ui.toast(s.active.status==='Asleep'?'ねむり状態のためワザを使えません':'マヒ状態のためワザを使えません');
           return;
         }
-        if(s.active.status==='Confused'){
+        if(!choice?.attackStatusResolved&&s.active.status==='Confused'){
           const heads=Math.random()<0.5;
           this.log(`${getCardDisplayName(attC)}はこんらん状態！コイントス：${heads?'オモテ。ワザを使える！':'ウラ。ワザは失敗！'}`);
           if(!heads){
@@ -10280,13 +10302,14 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }
         }
 
+        choice={...(choice||{}),attackStatusResolved:true};
         let atk = declaredAtk;
         if (isGenomeHack && copiedAttackIdx === null) {
           const targetCard = CARD_MAP[opp.active.cardId];
           const copies = (targetCard.attacks || []).map((copy, i) => ({ copy, i })).filter(x => x.copy.fx !== 'genome');
           if (!copies.length) { if (side === 'player') ui.toast('コピーできる相手のワザがありません'); return; }
           if (side === 'player') {
-            this.pendingGenomeAttack = { session: this.sessionId, side, atkIdx };
+            this.pendingGenomeAttack = { session: this.sessionId, side, atkIdx, choice };
             this.actionLocked = true;
             const html = copies.map(x => `<div onclick="battle.resolveGenomeHack('player',${atkIdx},${x.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-purple-50 border cursor-pointer flex flex-col items-center"><span class="text-sm font-black text-slate-900">${escapeHtml(x.copy.name)}</span><span class="text-xs text-slate-600">${Number(x.copy.damage) || 0}ダメージ</span><span class="text-[10px] text-slate-500">${escapeHtml(x.copy.text || '追加効果なし')}</span></div>`).join('');
             this.render();
@@ -10317,7 +10340,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           const required=Math.min(multiBenchTargetCount,candidates.length);
           if(!candidates.length)choice={benches:[],targetSide:'self'};
           else if(side==='player'){
-            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx,multiBench:true,maxTargets:multiBenchTargetCount,requiredTargets:required,targetSide:'self'};
+            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx,multiBench:true,maxTargets:multiBenchTargetCount,requiredTargets:required,targetSide:'self',choice};
             this.actionLocked=true;
             const html=candidates.map(item=>'<label class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex items-center gap-3"><input type="checkbox" data-multi-attack-bench="'+item.index+'" class="w-5 h-5" /><span class="flex flex-col items-center">'+ui.renderMiniCard(item.inst.cardId)+'<span class="text-xs font-black text-slate-700 mt-1">HP '+item.inst.hp+'/'+item.inst.maxHp+'・エネ'+item.inst.energies.length+'</span></span></label>').join('');
             this.render();
@@ -10332,7 +10355,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           const candidates=opp.bench.map((inst,index)=>({inst,index}));
           if(!candidates.length)choice={benches:[]};
           else if(side==='player'){
-            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx,multiBench:true,maxTargets:multiBenchTargetCount,requiredTargets:atk.genericEffect?.benchDamageUpTo?0:Math.min(multiBenchTargetCount,candidates.length)};
+            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx,multiBench:true,maxTargets:multiBenchTargetCount,requiredTargets:atk.genericEffect?.benchDamageUpTo?0:Math.min(multiBenchTargetCount,candidates.length),choice};
             this.actionLocked=true;
             const html=candidates.map(({inst,index})=>`<label class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex items-center gap-3"><input type="checkbox" data-multi-attack-bench="${index}" class="w-5 h-5" /><span class="flex flex-col items-center">${ui.renderMiniCard(inst.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${inst.hp}/${inst.maxHp}・エネ${inst.energies.length}</span></span></label>`).join('');
             const attackLabel=getCardDisplayAttackName(CARD_MAP[s.active.cardId],atk,isGenomeHack?copiedAttackIdx:atkIdx);
@@ -10355,7 +10378,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if(!targets.length) choice={targetZone:null,targetIndex:-1};
           else if(targets.length===1) choice={targetZone:targets[0].z,targetIndex:targets[0].i};
           else if(side==='player'){
-            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx};
+            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx,choice};
             this.actionLocked=true;
             const html=targets.map(t=>`<div onclick="battle.resolveAttackChoice('${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${t.inst.hp}/${t.inst.maxHp}・エネ${t.inst.energies.length}</span><span class="text-[10px] text-slate-500">${t.z==='active'?'バトル場':'ベンチ'}</span></div>`).join('');
             this.render();
@@ -10375,7 +10398,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if (list.length === 0) choice = { bench: -1 };
           else if (list.length === 1) choice = { bench: list[0]._targetIndex };
           else if (side === 'player') {
-            this.pendingAttackChoice = { session: this.sessionId, side, atkIdx, copiedAttackIdx };
+            this.pendingAttackChoice = { session: this.sessionId, side, atkIdx, copiedAttackIdx ,choice};
             this.actionLocked = true;
             const html = list.map((b, bi) => `<div onclick="battle.resolveAttackChoice(${b._targetIndex});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(b.cardId)}<span class="text-xs font-black text-slate-700 mt-1">HP ${b.hp}/${b.maxHp}・エネ${b.energies.length}</span></div>`).join('');
             this.render();
@@ -10391,6 +10414,31 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }
         }
 
+        const ge=atk.genericEffect||{};
+        if(ge.discardHandCardOrFail){
+          if(!s.hand.length){
+            this.log(getCardDisplayName(attC)+'のワザは、トラッシュできる手札がないため失敗！');
+            if(side==='player')this.endTurn();
+            return;
+          }
+          let discardIndex=Number(choice?.handCardIndex);
+          if(side==='player'&&!Number.isInteger(choice?.handCardIndex)){
+            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx,discardHandCard:true,choice};
+            this.actionLocked=true;
+            const cards=s.hand.map((id,index)=>'<div onclick="battle.resolveDiscardHandAttackChoice('+index+');ui.closeSelectModal();" class="p-2 rounded-2xl border bg-slate-50 hover:bg-sky-50 cursor-pointer flex justify-center">'+ui.renderMiniCard(id)+'</div>').join('');
+            this.render();
+            ui.openSelectModal(getCardDisplayAttackName(attC,atk,atkIdx)+'：手札から1枚トラッシュ', '<div class="grid grid-cols-2 gap-2">'+cards+'</div>', true);
+            return;
+          }
+          if(side!=='player')discardIndex=Math.floor(Math.random()*s.hand.length);
+          if(!Number.isInteger(discardIndex)||discardIndex<0||discardIndex>=s.hand.length){
+            if(side==='player')ui.toast('トラッシュする手札を選び直してください');
+            return;
+          }
+          const [discardedCard]=s.hand.splice(discardIndex,1);
+          s.discard.push(discardedCard);
+          this.log(getCardDisplayName(CARD_MAP[discardedCard])+'を手札からトラッシュ！');
+        }
         const coinEffect=atk.genericEffect||{};
         let coinHeads=0, coinRolls=0;
         if(coinEffect.coinBonusDamage||coinEffect.coinDamagePerHeads||coinEffect.coinFailDamageZero||coinEffect.coinThenDiscardOpponentRandomEnergy||coinEffect.coinDiscardOpponentRandomEnergyPerHeads||coinEffect.coinUntilTails||coinEffect.selfDamageOnTails||coinEffect.coinAllHeadsBonus||coinEffect.coinPerPokemon||coinEffect.coinPerEnergy||coinEffect.coinPerEnergyType||coinEffect.opponentStatusesIfHeads||coinEffect.opponentStatusesIfAtLeastHeads||coinEffect.defendingCannotAttackNextTurnIfHeads||coinEffect.coinThenDiscardOpponentRandomHand||coinEffect.coinDiscardOpponentRandomHandPerHeads||coinEffect.coinShuffleOpponentRandomHandIfHeads||coinEffect.coinShuffleOpponentRandomHandPerHeads||coinEffect.selfCannotAttackNextTurnIfTails||coinEffect.opponentStatusesIfTails){
