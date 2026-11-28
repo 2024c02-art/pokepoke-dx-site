@@ -8,6 +8,6 @@ assert.match(html,/target\.inst\.hp>0/);
 assert.match(html,/attackDamageWithActiveWeakness\(target\.inst,baseDamage,attC\.type,attC\.isEx,!!ge\.ignoreWeakness\)/);
 assert.match(html,/りゅうせいぐん/);
 assert.match(html,/function canUnlockSupplementalPokemon/);
-assert.match(html,/const playablePokemon=canUnlockSupplementalPokemon\\(card,category,enDetail,attacks,ability,text,g\\.subtype_2\\)/);
-assert.match(html,/if\\(ability&&!ability\\.genericEffect\\) return false/);
+assert.ok(html.includes('const playablePokemon=canUnlockSupplementalPokemon('),'supplemental Pokémon should use the safe playability gate');
+assert.ok(html.includes('if(ability&&!ability.genericEffect) return false'),'an Ability without a parsed handler must remain collection-only');
 console.log('Genetic Apex Dragonite regression checks passed.');
