@@ -27,6 +27,7 @@ const cases=[
   ["If the Defending Pokémon is a Basic Pokémon, this attack does 30 more damage.",'bonusIfOpponentIsBasic',30],
   ["If your opponent's Active Pokémon has a Pokémon Tool attached, this attack does 30 more damage.",'bonusIfOpponentHasTool',30],
   ["Discard a card from your hand. If you can't, this attack does nothing.",'discardHandCardOrFail',true],
+  ["During your next turn, this Pokémon's Overdrive Smash attack does +60 damage.",'nextTurnAttackDamageBonus',60],
   ["This attack does 40 damage for each Pokémon Tool attached to all of your Pokémon",'damagePerPokemonToolAttached',40],
   ["If 1 of your Pokémon used Sweets Relay during your last turn, this attack does 20 more damage.",'bonusIfSweetsRelayLastTurn',20],
   ["This attack does 40 damage for each time your Pokémon used Sweets Relay during this game.",'bonusPerSweetsRelayUsedThisGame',40],
@@ -85,6 +86,13 @@ assert.equal(calc.call(engine,{...attacker,movedToActiveTurn:2},
 assert.equal(calc.call(engine,attacker,
   {...baseAttack,genericEffect:movedActiveEffect},def,'player').final,50,
   'a Pokémon that did not move from the Bench gets no bonus');
+const namedAttackHolder={...attacker,attackNameDamageBonus:60,attackNameDamageBonusName:'Overdrive Smash',attackNameDamageBonusUntilTurn:5};
+assert.equal(calc.call({...engine,turn:5},namedAttackHolder,{...baseAttack,name:'Overdrive Smash'},def,'player').final,110,
+  'named attack bonus applies during the next own turn');
+assert.equal(calc.call({...engine,turn:5},namedAttackHolder,{...baseAttack,name:'Different Attack'},def,'player').final,50,
+  'named attack bonus does not affect other attacks');
+assert.equal(calc.call({...engine,turn:6},namedAttackHolder,{...baseAttack,name:'Overdrive Smash'},def,'player').final,50,
+  'named attack bonus expires after the next own turn');
 assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfOpponentHasAbility:40}},def,'player').final,90,'ability bonus');
 def={cardId:'targetAbility',hp:100,maxHp:100,energies:[],tool:'tool'};
 assert.equal(calc.call(engine,attacker,{...baseAttack,genericEffect:{bonusIfOpponentHasTool:30}},def,'player').final,80,
@@ -122,6 +130,9 @@ assert.match(html,/itemBlockedUntilTurn: Number\(this\.p\.itemBlockedUntilTurn\|
 assert.match(html,/trainerBlockedUntilTurn: Number\(this\.p\.trainerBlockedUntilTurn\|\|0\)/);
 assert.match(html,/movedToActiveTurn: null/,'new Pokémon instances start without a Bench-to-Active move');
 assert.match(html,/bonusIfMovedFromBenchToActive/,'damage calculator supports the once-this-turn bonus');
+assert.match(html,/attackNameDamageBonusUntilTurn/,'named attack bonus duration is stored on each Pokémon');
+assert.match(html,/ge\.nextTurnAttackDamageBonus>0/,'the next-turn named attack bonus is applied when earned');
+
 assert.match(html,/s\.active = s\.bench\.splice\(bi, 1\)\[0\];\s*s\.active\.movedToActiveTurn = this\.turn/,'promotion records the turn');
 assert.match(html,/this\.p\.active = this\.p\.bench\.splice\(bi, 1\)\[0\]; this\.p\.active\.movedToActiveTurn = this\.turn/,'retreat records the turn');
 assert.match(html,/opp\.active=chosen\.inst;opp\.active\.movedToActiveTurn=this\.turn/,'opponent gust records the turn');
