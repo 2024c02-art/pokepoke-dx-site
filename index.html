@@ -9539,7 +9539,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(attackerIsEx&&CARD_MAP[inst?.cardId]?.ability?.genericEffect?.preventDamageFromOpponentEx)return 0;
         if(inst && Number(inst.attackDamageReductionUntilTurn||0)>=this.turn) damage-=Math.max(0,Number(inst.attackDamageReduction)||0);
         const effect=inst&&CARD_MAP[inst.cardId]?.ability?.genericEffect,active=!!inst&&(this.p?.active===inst||this.o?.active===inst),types=effect?.passiveDamageReductionTypes||[];
-        if(effect?.passiveDamageReduction>0&&(!types.length||(attackerType&&types.includes(attackerType)))&&(!effect.passiveDamageReductionActiveOnly||active))damage-=Number(effect.passiveDamageReduction);
+        const reductionUsesNamedPokemonCondition=!!(effect?.passiveDamageReductionIfNamedPokemonInPlay||effect?.passiveDamageReductionIfAnotherNamedPokemonInPlay);
+        if(effect?.passiveDamageReduction>0&&!reductionUsesNamedPokemonCondition&&(!types.length||(attackerType&&types.includes(attackerType)))&&(!effect.passiveDamageReductionActiveOnly||active))damage-=Number(effect.passiveDamageReduction);
         const defendingSide=this.p?.active===inst||this.p?.bench?.includes(inst)?'player':'opp';
         if(effect?.passiveDamageReductionIfNamedPokemonInPlay&&this.hasPokemonNamed(defendingSide,effect.passiveDamageReductionIfNamedPokemonInPlay))damage-=Number(effect.passiveDamageReduction||0);
         if(effect?.passiveDamageReductionIfAnotherNamedPokemonInPlay){
