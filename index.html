@@ -9355,8 +9355,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           this.drawCards(oppSide,drawCount);
           this.log((ability?.name||'特性')+'！相手は手札を山札に戻してシャッフルし、'+(opp.hand.length-before)+'枚引いた！');
         }else if(action==='recoverRandomToolsOnEvolve'){
-          const indices=toolTargets.map(x=>x.index),picked=[];
-          for(let n=0;n<Math.min(Number(effect.amount)||1,indices.length);n++){const pick=Math.floor(Math.random()*indices.length);picked.push(indices.splice(pick,1)[0]);}
+          const indices=toolTargets.map(x=>x.index),picked=[],pickCount=Math.min(Number(effect.amount)||1,indices.length);
+          for(let n=0;n<pickCount;n++){const pick=Math.floor(Math.random()*indices.length);picked.push(indices.splice(pick,1)[0]);}
           picked.sort((a,b)=>b-a).forEach(index=>{const id=board.discard.splice(index,1)[0];if(id)board.hand.push(id);});
           this.log((ability?.name||'特性')+'！トラッシュからポケモンのどうぐを'+picked.length+'枚手札に戻した！');
         }else if(action==='damageOpponentActiveOnEvolve'&&opp.active){
