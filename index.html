@@ -6948,6 +6948,8 @@ const PACK_CATALOG_DATA = {
         const evolvesSearchMatch=t.match(/^Put a random card from your deck that evolves from (.+?) into your hand$/i);
         if(evolvesSearchMatch)return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckEvolvesFrom:evolvesSearchMatch[1].trim()};
         const energyTypeFromText=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
+        if((m=t.match(/^Choose (\d+) of your Benched (?:Pokémon|Pokemon)\. For each of those (?:Pokémon|Pokemon), take a \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to that (?:Pokémon)$/i)))return {attachEnergyFromZone:1,attachEnergyType:energyTypeFromText(m[2]),attachEnergyTarget:'multiBench',attachEnergyTargetCount:Number(m[1])};
+        if((m=t.match(/^Reveal all of your (?:Pokémon|Pokemon) in play and in your hand that have the Puppy Pile attack, and this attack does (\d+) damage for each (?:Pokémon|Pokemon) you revealed in this way$/i)))return {bonusPerPuppyPilePokemon:Number(m[1])};
         if((m=t.match(/^This attack also does (\d+) damage to 1 of your Benched (?:Pokémon|Pokemon)$/i)))return {selfBenchDamageTarget:Number(m[1])};
         if((m=t.match(/^Take (?:a|(\d+)) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to this (?:Pokémon|Pokemon)$/i)))return {attachEnergyFromZone:Number(m[1]||1),attachEnergyType:energyTypeFromText(m[2]),attachEnergyTarget:'self'};
         if((m=t.match(/^Take (?:a|(\d+)) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to 1 of your Benched(?: \[([A-Za-z]+)\])? (?:Pokémon|Pokemon)$/i)))return {attachEnergyFromZone:Number(m[1]||1),attachEnergyType:energyTypeFromText(m[2]),attachEnergyTarget:'bench',attachEnergyPokemonType:energyTypeFromText(m[3]||m[2])};
@@ -9666,6 +9668,13 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           return sum+(effect?.passiveAttackDamageBonusType===attC.type?Number(effect.passiveAttackDamageBonus||0):0);
         },0);
         dmg+=teamAttackBonus;
+
+        if(atk.genericEffect?.bonusPerPuppyPilePokemon){
+          const hasPuppyPile=cardId=>(CARD_MAP[cardId]?.attacks||[]).some(attack=>String(attack.name||'').trim().toLowerCase()==='puppy pile');
+          const inPlay=[s.active,...s.bench].filter(inst=>inst&&hasPuppyPile(inst.cardId)).length;
+          const inHand=(s.hand||[]).filter(hasPuppyPile).length;
+          dmg+=Number(atk.genericEffect.bonusPerPuppyPilePokemon)*(inPlay+inHand);
+        }
         const attackerAbility=attC.ability?.genericEffect;
         if(attackerAbility?.passiveAttackDamageBonusIfNamedPokemonInPlay&&this.hasPokemonNamed(side,attackerAbility.passiveAttackDamageBonusIfNamedPokemonInPlay)){
           dmg+=Number(attackerAbility.passiveAttackDamageBonus||0);
@@ -10058,7 +10067,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(!pend||pend.session!==this.sessionId||!pend.multiBench)return;
         const selected=[...document.querySelectorAll('input[data-multi-attack-bench]:checked')]
           .map(input=>Number(input.getAttribute('data-multi-attack-bench')));
-        const indices=[...new Set(selected)].filter(index=>Number.isInteger(index)&&index>=0&&index<this.o.bench.length);
+        const targetBoard=pend.targetSide==='self'?this.p:this.o;
+        const indices=[...new Set(selected)].filter(index=>Number.isInteger(index)&&index>=0&&index<targetBoard.bench.length);
         if(indices.length>Number(pend.maxTargets||0)){
           ui.toast(`選べるベンチは最大${pend.maxTargets}匹です`);
           return;
@@ -10070,7 +10080,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.pendingAttackChoice=null;
         this.actionLocked=false;
         this.render();
-        this.attack(pend.side,pend.atkIdx,pend.copiedAttackIdx,{benches:indices});
+        this.attack(pend.side,pend.atkIdx,pend.copiedAttackIdx,{benches:indices,targetSide:pend.targetSide||'opponent'});
       },
 
       resolveGenomeHack(side, atkIdx, copiedAttackIdx) {
@@ -10179,8 +10189,25 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const genericBenchDamage=Number(atk.genericEffect?.benchDamage||0);
         const genericOpponentPokemonDamage=Number(atk.genericEffect?.opponentPokemonDamage||atk.genericEffect?.opponentPokemonDamagePerEnergy||0);
         const genericBenchAllDamage=Number(atk.genericEffect?.benchAllDamage||0);
-        const pickKind = genericOpponentPokemonDamage>0 ? 'oppPokemon' : (atk.fx === 'bench_snipe30' || genericBenchDamage>0) ? 'oppBench' : (atk.fx === 'metal_turbo' || atk.genericEffect?.switchSelf || atk.genericEffect?.selfBenchDamageTarget>0 || atk.genericEffect?.attachEnergyTarget==='bench' || atk.genericEffect?.moveEnergyToBench) ? 'ownBench' : null;
-        const multiBenchTargetCount=Math.max(1,Math.min(3,Number(atk.genericEffect?.benchDamageCount)||1));
+
+        const pickKind = genericOpponentPokemonDamage>0 ? 'oppPokemon' : (atk.fx === 'bench_snipe30' || genericBenchDamage>0) ? 'oppBench' : (atk.fx === 'metal_turbo' || atk.genericEffect?.switchSelf || atk.genericEffect?.selfBenchDamageTarget>0 || atk.genericEffect?.attachEnergyTarget==='bench' || atk.genericEffect?.attachEnergyTarget==='multiBench' || atk.genericEffect?.moveEnergyToBench) ? 'ownBench' : null;
+        const multiBenchTargetCount=Math.max(1,Math.min(3,Number(atk.genericEffect?.benchDamageCount||atk.genericEffect?.attachEnergyTargetCount)||1));
+        if(pickKind==='ownBench'&&atk.genericEffect?.attachEnergyTarget==='multiBench'&&!choice){
+          const candidates=s.bench.map((inst,index)=>({inst,index})).filter(item=>!atk.genericEffect?.attachEnergyPokemonType||CARD_MAP[item.inst.cardId]?.type===atk.genericEffect.attachEnergyPokemonType);
+          const required=Math.min(multiBenchTargetCount,candidates.length);
+          if(!candidates.length)choice={benches:[],targetSide:'self'};
+          else if(side==='player'){
+            this.pendingAttackChoice={session:this.sessionId,side,atkIdx,copiedAttackIdx,multiBench:true,maxTargets:multiBenchTargetCount,requiredTargets:required,targetSide:'self'};
+            this.actionLocked=true;
+            const html=candidates.map(item=>'<label class="p-3 rounded-2xl bg-slate-50 hover:bg-sky-50 border cursor-pointer flex items-center gap-3"><input type="checkbox" data-multi-attack-bench="'+item.index+'" class="w-5 h-5" /><span class="flex flex-col items-center">'+ui.renderMiniCard(item.inst.cardId)+'<span class="text-xs font-black text-slate-700 mt-1">HP '+item.inst.hp+'/'+item.inst.maxHp+'・エネ'+item.inst.energies.length+'</span></span></label>').join('');
+            this.render();
+            const attackLabel=getCardDisplayAttackName(CARD_MAP[s.active.cardId],atk,isGenomeHack?copiedAttackIdx:atkIdx);
+            ui.openSelectModal(attackLabel+'：エネルギーをつけるベンチを'+required+'匹選択','<div class="grid grid-cols-2 gap-2">'+html+'</div><button class="w-full mt-3 p-3 rounded-xl bg-sky-600 text-white font-black" onclick="battle.resolveMultiAttackBenchChoice();ui.closeSelectModal();">選択を確定</button>',true);
+            return;
+          }else{
+            choice={benches:candidates.slice(0,multiBenchTargetCount).map(item=>item.index),targetSide:'self'};
+          }
+        }
         if(pickKind==='oppBench'&&multiBenchTargetCount>1&&!choice){
           const candidates=opp.bench.map((inst,index)=>({inst,index}));
           if(!candidates.length)choice={benches:[]};
@@ -10287,11 +10314,17 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (atk.fx === 'heal20') s.active.hp = Math.min(s.active.maxHp, s.active.hp + 20);
         const ge=atk.genericEffect||{};
         if(ge.attachEnergyFromZone>0){
-          const target=ge.attachEnergyTarget==='bench'?(choice&&choice.bench>=0?s.bench[choice.bench]:null):s.active,energyType=ge.attachEnergyType;
+          const energyType=ge.attachEnergyType;
           const hasEnergyType=Array.isArray(s.energyTypes)&&s.energyTypes.includes(energyType);
-          if(target&&energyType&&hasEnergyType&&(!ge.attachEnergyPokemonType||CARD_MAP[target.cardId]?.type===ge.attachEnergyPokemonType)){
-            for(let n=0;n<Number(ge.attachEnergyFromZone);n++){target.energies.push(energyType);this.nightmareAura(side,target,energyType);}
-            this.log(`ワザの効果で${getCardDisplayName(CARD_MAP[target.cardId])}に${TYPE_META[energyType]?.code||energyType}エネルギーを${Number(ge.attachEnergyFromZone)}個つけた！`);
+          const targets=ge.attachEnergyTarget==='multiBench'
+            ? (choice?.targetSide==='self'?(choice.benches||[]).map(index=>s.bench[index]).filter(Boolean):[])
+            : [ge.attachEnergyTarget==='bench'?(choice&&choice.bench>=0?s.bench[choice.bench]:null):s.active].filter(Boolean);
+          if(hasEnergyType&&energyType&&targets.length){
+            for(const target of targets){
+              if(ge.attachEnergyPokemonType&&CARD_MAP[target.cardId]?.type!==ge.attachEnergyPokemonType)continue;
+              for(let n=0;n<Number(ge.attachEnergyFromZone);n++){target.energies.push(energyType);this.nightmareAura(side,target,energyType);}
+              this.log('ワザの効果で'+getCardDisplayName(CARD_MAP[target.cardId])+'に'+(TYPE_META[energyType]?.code||energyType)+'エネルギーを'+Number(ge.attachEnergyFromZone)+'個つけた！');
+            }
           }else if(side==='player'&&!hasEnergyType)ui.toast('このエネルギーはエネルギーゾーンにありません');
         }
         if(ge.moveEnergyToBench&&choice&&choice.bench>=0&&s.bench[choice.bench]){
