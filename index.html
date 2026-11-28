@@ -7130,6 +7130,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If this (?:Pokémon|Pokemon) moved from your Bench to the Active Spot this turn, this attack does (\d+) more damage$/i)))return {bonusIfMovedFromBenchToActive:Number(m[1])};
         if(/^Discard a card from your hand\. If you can't, this attack does nothing$/i.test(t))return {discardHandCardOrFail:true};
         if((m=t.match(/^During your next turn, this (?:Pokémon|Pokemon)'s (.+?) attack does \+?(\d+) damage$/i)))return {nextTurnAttackDamageBonus:Number(m[2]),nextTurnAttackName:m[1].trim()};
+        if(/^Switch out your opponent's Active (?:Pokémon|Pokemon) to the Bench\. \(Your opponent chooses the new Active (?:Pokémon|Pokemon)\)$/i.test(t))return {switchOpponentActiveToBench:true};
         const clauses=t.split(/(?<=\.)\s+(?=[A-Z])/);
         if(clauses.length>1){const combined={};for(const clause of clauses){const part=this.parseGenericEffect(clause);if(part)Object.assign(combined,part);}if(Object.keys(combined).length)return combined;}
         return null;
@@ -7138,6 +7139,7 @@ const PACK_CATALOG_DATA = {
         const t=String(text||'').replace(/\u00a0/g,' ').trim().replace(/[.!。]$/,'');if(!t)return null;
         let m;
         if(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, it can evolve during your first turn or the turn you play it$/i.test(t))return {passive:true,allowEvolutionOnOwnFirstTurn:true,allowEvolutionOnTurnPlayed:true};
+        if((m=t.match(/^Once during your turn, (?:(if this (?:Pokémon|Pokemon) is in the Active Spot, )?you may switch out your opponent's Active (Basic )?(?:Pokémon|Pokemon) to the Bench\. \(Your opponent chooses the new Active (?:Pokémon|Pokemon)\))$/i)))return {action:'switchOpponentActiveToBench',requiresActive:!!m[1],requireBasic:!!m[2]};
         if((m=t.match(/^If you have another ([A-Za-z][A-Za-z0-9'♀♂ .-]*) in play, this (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,retreatCostReductionIfAnotherNamedPokemonInPlay:m[1].trim(),retreatCostReduction:Number(m[2])};
         const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
         if((m=t.match(/^If this (?:Pokémon|Pokemon) has a Pokémon Tool attached, attacks used by this (?:Pokémon|Pokemon) cost (\d+) less \[([A-Za-z]+)\] Energy$/i)))return {passive:true,attackCostReductionIfToolAttached:true,attackCostReduction:Number(m[1]),attackCostReductionType:typeOf(m[2])};
@@ -9581,6 +9583,38 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         this.render();
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
+      resolveOpponentActiveSwitch(side) {
+        const victimSide=side==='player'?'opp':'player';
+        const victim=victimSide==='player'?this.p:this.o;
+        if(!victim.active||victim.bench.length===0||victim.active.hp<=0)return false;
+        this.log('相手のバトルポケモンをベンチに戻す！相手が新しいバトルポケモンを選びます。');
+        if(this.isOnlineP2P&&side==='player'){
+          this.render();
+          this.syncToPeer(false);
+          try{
+            onlineLobby.conn?.send({type:'REMOTE_EFFECT',effect:'sabrina'});
+            this.beginRemoteChoiceWait('sabrina');
+          }catch(e){
+            ui.toast('相手の交代選択を送信できませんでした');
+            return false;
+          }
+          return true;
+        }
+        if(side==='player'){
+          this.resolveSabrina('opp',this.chooseOwnActiveIndex('opp'));
+          return true;
+        }
+        if(this.p.bench.length===1){
+          this.resolveSabrina('player',0);
+          return true;
+        }
+        this.pendingGustChoice={session:this.sessionId,online:false};
+        this.actionLocked=true;
+        this.render();
+        this.openSabrinaChoice();
+        return true;
+      },
+
       // victimSide's Active goes to the Bench and bench[benchIndex] takes its place (same slot).
       resolveSabrina(victimSide, benchIndex) {
         const victim = victimSide === 'player' ? this.p : this.o;
@@ -9588,7 +9622,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!target || !victim.active) { this.render(); return false; }
         const old = victim.active;
         this.clearSpecialConditions(old);
-        victim.active = target; victim.bench[benchIndex] = old;
+        victim.active = target; victim.active.movedToActiveTurn = this.turn; victim.bench[benchIndex] = old;
         this.log(`${victimSide === 'player' ? 'あなた' : '相手'}は${getCardDisplayName(CARD_MAP[target.cardId])}をバトル場に出した！`);
         this.render();
         return true;
@@ -10061,6 +10095,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         else if(ge.action==='switchOwnActiveWithBench'&&chosen&&board.active){const old=board.active;this.clearSpecialConditions(old);board.active=chosen.inst;board.active.movedToActiveTurn=this.turn;board.bench[chosen.i]=old;this.log(`${ability.name}！自分のバトルポケモンを入れ替えた！`);}
         else if(ge.action==='switchSelfFromBench'&&board.active&&z==='bench'){const old=board.active;this.clearSpecialConditions(old);board.active=inst;board.active.movedToActiveTurn=this.turn;board.bench[i]=old;this.log(`${ability.name}！特性を持つポケモンをバトル場に出した！`);}
         else if(ge.action==='applyOpponentStatus'||ge.action==='applyOpponentStatusIfHeads'){if(!opp.active){if(side==='player')ui.toast('相手のバトルポケモンがいません');return false;}const heads=ge.action!=='applyOpponentStatusIfHeads'||Math.random()<0.5;if(heads){this.applySpecialCondition(opp.active,ge.status);this.log(`${ability.name}！相手のバトルポケモンを${ge.status}にした！`);}else this.log(`${ability.name}！コイントスはウラ。効果は発動しなかった。`);}
+        else if(ge.action==='switchOpponentActiveToBench'){
+          const candidates=opp.bench.filter(p=>!ge.requireBasic||CARD_MAP[p.cardId]?.stage==='Basic');
+          if(!opp.active||!candidates.length){if(side==='player')ui.toast('交代できる相手のベンチポケモンがいません');return false;}
+          if(ge.requireBasic&&candidates.length!==opp.bench.length){opp.bench=opp.bench.filter(p=>CARD_MAP[p.cardId]?.stage==='Basic');}
+          if(!this.resolveOpponentActiveSwitch(side))return false;
+        }
         else return false;
         if(!ge.repeatable)inst.abilityUsed=true;sound.energy();battleVfx.triggerBurst(side);this.render();
         if(ge.endsTurn&&!this.over&&!this.pendingSelfKO){if(side==='player')this.endTurn();else if(!this.isOnlineP2P&&this.currentSide==='opp'){this.turn++;this.startTurn('player');}return true;}
@@ -10608,6 +10648,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }
         }
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatuses) ge.opponentStatuses.forEach(status=>this.applySpecialCondition(opp.active,status));
+        if(!opponentActiveProtected&&ge.switchOpponentActiveToBench)this.resolveOpponentActiveSwitch(side);
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfHeads&&coinHeads>0) ge.opponentStatusesIfHeads.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfTails&&coinHeads===0) ge.opponentStatusesIfTails.forEach(status=>this.applySpecialCondition(opp.active,status));
         if(opp.active&&!opponentActiveProtected&&ge.opponentStatusesIfAtLeastHeads&&coinHeads>=Number(ge.opponentStatusesIfAtLeastHeads.count||1)) ge.opponentStatusesIfAtLeastHeads.statuses.forEach(status=>this.applySpecialCondition(opp.active,status));
@@ -11179,6 +11220,15 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             if (CARD_MAP[inst.cardId]?.ability && !CARD_MAP[inst.cardId].ability.passive && !inst.abilityUsed) this.useAbility('opp', idx === 0 ? 'active' : 'bench', idx === 0 ? 0 : idx - 1);
           });
         }
+        if(this.pendingGustChoice){
+          const waitForReplacement=()=>{
+            if(scheduledSession!==this.sessionId||this.over||this.currentSide!=='opp'||this.isOnlineP2P)return;
+            if(this.pendingGustChoice){setTimeout(waitForReplacement,250);return;}
+            finishTurn();
+          };
+          setTimeout(waitForReplacement,250);
+          return;
+        }
         if (this.pendingSelfKO) {
           if (!this.pendingPromotionNext) this.pendingPromotionNext = { side: 'player', incrementTurn: true, onlinePassTurn: false };
           return;
@@ -11210,6 +11260,18 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
                     return score(x) > score(best) ? x : best;
                   }, ready[0]);
               this.attack('opp', choice.ai);
+              if(this.pendingGustChoice){
+                const waitForReplacement=()=>{
+                  if(scheduledSession!==this.sessionId||this.over||this.currentSide!=='opp'||this.isOnlineP2P)return;
+                  if(this.pendingGustChoice){setTimeout(waitForReplacement,250);return;}
+                  if(!this.over)setTimeout(()=>{
+                    if(scheduledSession!==this.sessionId||this.over||this.currentSide!=='opp'||this.isOnlineP2P)return;
+                    this.turn++;this.startTurn('player');
+                  },750);
+                };
+                setTimeout(waitForReplacement,250);
+                return;
+              }
               if (this.pendingSelfKO) return;
               if (!this.over) setTimeout(() => {
                 if (scheduledSession !== this.sessionId || this.over || this.currentSide !== 'opp' || this.isOnlineP2P) return;
