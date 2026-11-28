@@ -7241,6 +7241,10 @@ const PACK_CATALOG_DATA = {
         if(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, your opponent can't use any Supporter cards from their hand$/i.test(t))return {passive:true,lockSupporterWhileActive:true};
         if((m=t.match(/^This (?:Pokémon|Pokemon) takes [−–-](\d+) damage from attacks(?: from \[([A-Za-z]+)\] or \[([A-Za-z]+)\] (?:Pokémon|Pokemon))?$/i))){return {passive:true,passiveDamageReduction:Number(m[1]),passiveDamageReductionTypes:[typeOf(m[2]),typeOf(m[3])].filter(Boolean)};}
         if((m=t.match(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, attacks used by your opponent's Active (?:Pokémon|Pokemon) do [−–-](\d+) damage$/i)))return {passive:true,passiveDamageReduction:Number(m[1]),passiveDamageReductionActiveOnly:true};
+        if((m=t.match(/^Once during your turn, when you put this (?:Pokémon|Pokemon) from your hand onto your Bench, you may have your opponent reveal their hand$/i)))return {trigger:'onBench',action:'revealOpponentHandOnBench'};
+        if(/^Once during your turn, when you put this (?:Pokémon|Pokemon) from your hand onto your Bench, you may switch it with your Active (?:Pokémon|Pokemon)\. If you do, move all of your Energy in play to this (?:Pokémon|Pokemon)$/i.test(t))return {trigger:'onBench',action:'switchSelfToActiveMoveAllEnergy'};
+        if(/^Once during your turn, when you put this (?:Pokémon|Pokemon) from your hand onto your Bench, you may switch out your opponent's Active (?:Pokémon|Pokemon) to the Bench\. \(Your opponent chooses the new Active (?:Pokémon|Pokemon)\.\)$/i.test(t))return {trigger:'onBench',action:'switchOpponentActiveOnBench'};
+        if((m=t.match(/^Once during your turn, when you put this (?:Pokémon|Pokemon) from your hand onto your Bench, you may heal (\d+) damage from your Active \[([A-Za-z]+)\] (?:Pokémon|Pokemon)$/i)))return {trigger:'onBench',action:'healActiveOnBench',amount:Number(m[1]),targetPokemonType:typeOf(m[2])};
         return null;
       },
       attacksFrom(game) {
@@ -9227,6 +9231,70 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return false;
       },
 
+      resolveOnBenchAbility(side,benchIndex,useEffect=null) {
+        const board=side==='player'?this.p:this.o,opp=side==='player'?this.o:this.p;
+        const inst=board?.bench?.[Number(benchIndex)],card=inst&&CARD_MAP[inst.cardId],ability=card?.ability,effect=ability?.genericEffect;
+        if(!inst||effect?.trigger!=='onBench'||!effect.action)return false;
+        const action=effect.action;
+        const canUse=()=>{
+          if(action==='revealOpponentHandOnBench')return true;
+          if(action==='switchSelfToActiveMoveAllEnergy')return !!board.active;
+          if(action==='switchOpponentActiveOnBench')return !!(opp.active&&opp.bench.length);
+          if(action==='healActiveOnBench')return !!(board.active&&board.active.hp<board.active.maxHp&&CARD_MAP[board.active.cardId]?.type===effect.targetPokemonType);
+          return false;
+        };
+        if(!canUse()){if(side==='player')ui.toast('この特性を使える対象がいません');return false;}
+        if(useEffect===null){
+          if(side!=='player')useEffect=true;
+          else{
+            this.actionLocked=true;
+            const html='<div class="grid grid-cols-2 gap-2"><button class="p-3 rounded-xl bg-sky-600 text-white font-black" onclick="setTimeout(()=>battle.resolveOnBenchAbility(&quot;player&quot;,'+Number(benchIndex)+',true),0);ui.closeSelectModal();">使う</button><button class="p-3 rounded-xl bg-slate-100 text-slate-700 font-black" onclick="setTimeout(()=>battle.resolveOnBenchAbility(&quot;player&quot;,'+Number(benchIndex)+',false),0);ui.closeSelectModal();">使わない</button></div>';
+            ui.openSelectModal((ability?.name||'特性')+'を使いますか？',html,true);
+            return true;
+          }
+        }
+        if(!useEffect){
+          inst.abilityUsed=true;this.actionLocked=false;
+          this.log((ability?.name||'特性')+'は使わなかった。');
+          this.render();if(side==='player'&&this.isOnlineP2P)this.syncToPeer(false);
+          return true;
+        }
+        inst.abilityUsed=true;this.actionLocked=false;
+        if(action==='revealOpponentHandOnBench'){
+          if(side==='player'){
+            const html=opp.hand.length
+              ?opp.hand.map(id=>'<div class="p-2 rounded-xl border bg-slate-50 flex justify-center">'+ui.renderMiniCard(id)+'</div>').join('')
+              :'<p class="text-center text-sm text-slate-500">相手の手札はありません。</p>';
+            ui.openSelectModal('相手の手札を公開', '<div class="grid grid-cols-2 gap-2 max-h-[65vh] overflow-auto">'+html+'</div>');
+          }else{
+            this.log('相手の手札を確認した！');
+          }
+        }else if(action==='switchSelfToActiveMoveAllEnergy'){
+          const oldActive=board.active;
+          this.clearSpecialConditions(oldActive);
+          board.active=inst;board.bench[Number(benchIndex)]=oldActive;
+          inst.movedToActiveTurn=this.turn;
+          const moved=[];
+          for(const pokemon of [board.active,...board.bench].filter(Boolean)){
+            if(pokemon===inst)continue;
+            moved.push(...(pokemon.energies||[]));
+            pokemon.energies=[];
+          }
+          inst.energies.push(...moved);
+          this.log((ability?.name||'特性')+'！自分をバトル場に出し、場のエネルギー'+moved.length+'個をすべて移動！');
+        }else if(action==='switchOpponentActiveOnBench'){
+          this.log((ability?.name||'特性')+'！相手のバトルポケモンをベンチに戻す！');
+          this.resolveOpponentActiveSwitch(side);
+        }else if(action==='healActiveOnBench'&&board.active){
+          const before=board.active.hp;
+          board.active.hp=Math.min(board.active.maxHp,before+Number(effect.amount||0));
+          this.log((ability?.name||'特性')+'！バトル場の'+getCardDisplayName(CARD_MAP[board.active.cardId])+'のHPを'+(board.active.hp-before)+'回復！');
+        }
+        if(!this.actionLocked&&!this.over)this.render();
+        if(side==='player'&&this.isOnlineP2P)this.syncToPeer(false);
+        return true;
+      },
+
       playHandCard(idx) {
         if (this.over || this.actionLocked) return;
         const id = this.p.hand[idx], c = CARD_MAP[id]; if (!c) return;
@@ -9249,10 +9317,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (c.category === 'Pokemon') {
           if (c.stage === 'Basic') {
             if (this.p.bench.length >= 3) { ui.toast('ベンチは最大3枠までです'); return; }
-            this.p.hand.splice(idx, 1); this.p.bench.push(this.createInst(id, this.turn));
+            this.p.hand.splice(idx, 1); const placed=this.createInst(id, this.turn); this.p.bench.push(placed);
             sound.draw(); battleVfx.triggerBurst('player');
             this.log(`${getCardDisplayName(c)}をベンチに出した！`); this.render();
             if (this.isOnlineP2P) this.syncToPeer(false);
+            if(c.ability?.genericEffect?.trigger==='onBench')setTimeout(()=>{const bi=this.p.bench.indexOf(placed);if(bi>=0&&!this.over)this.resolveOnBenchAbility('player',bi,null);},0);
           } else {
             const field = [{ z: 'active', i: 0, inst: this.p.active }, ...this.p.bench.map((b, i) => ({ z: 'bench', i, inst: b }))];
             const cands = field.filter(t => t.inst && isEvolutionFrom(c, CARD_MAP[t.inst.cardId]) && this.canEvolveInstanceNow('player',t.inst));
@@ -10290,6 +10359,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (c.ability.passive) { if (side === 'player') ui.toast(`「${c.ability.name}」は自動で発動する特性です`); return; }
 
         if(c.ability.genericEffect?.trigger==='onEvolve'){if(side==='player')ui.toast('この特性は進化したときに発動する特性です');return;}
+        if(c.ability.genericEffect?.trigger==='onBench'){if(side==='player')ui.toast('この特性はベンチに出したときに発動する特性です');return;}
         if (c.ability.genericEffect?.action) { this.resolveGenericAbility(side,z,i); return; }
 
         if (c.id === 'c_greninja_ex') {
