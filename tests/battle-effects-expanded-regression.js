@@ -48,6 +48,10 @@ const movedActiveEffect=parse.call(ctx,
   "If this Pokémon moved from your Bench to the Active Spot this turn, this attack does 60 more damage.");
 assert.equal(movedActiveEffect.bonusIfMovedFromBenchToActive,60,
   'moved-from-Bench damage bonus should parse');
+const switchOpponentEffect=parse.call(ctx,
+  "Switch out your opponent's Active Pokémon to the Bench. (Your opponent chooses the new Active Pokémon.)");
+assert.equal(switchOpponentEffect.switchOpponentActiveToBench,true,
+  'attacks can make the opponent choose a replacement Active Pokémon');
 const psychicDiscardEffect=parse.call(ctx,"This attack does 20 more damage for each [P] Pokémon in your discard pile.");
 assert.equal(psychicDiscardEffect.discardedPokemonType,'Psychic','discarded Pokemon type');
 
@@ -131,6 +135,10 @@ assert.match(html,/trainerBlockedUntilTurn: Number\(this\.p\.trainerBlockedUntil
 assert.match(html,/movedToActiveTurn: null/,'new Pokémon instances start without a Bench-to-Active move');
 assert.match(html,/bonusIfMovedFromBenchToActive/,'damage calculator supports the once-this-turn bonus');
 assert.match(html,/attackNameDamageBonusUntilTurn/,'named attack bonus duration is stored on each Pokémon');
+assert.match(html,/resolveOpponentActiveSwitch\(side\)/,'attack and Ability effects share the opponent-selected switch handler');
+assert.match(html,/onlineLobby\.conn\?\.send\(\{type:'REMOTE_EFFECT',effect:'sabrina'\}\)/,'online opponent-selected switch uses the existing remote choice protocol');
+assert.match(html,/victim\.active\.movedToActiveTurn = this\.turn/,'Sabrina-style replacement records its Active entry turn');
+
 assert.match(html,/ge\.nextTurnAttackDamageBonus>0/,'the next-turn named attack bonus is applied when earned');
 
 assert.match(html,/s\.active = s\.bench\.splice\(bi, 1\)\[0\];\s*s\.active\.movedToActiveTurn = this\.turn/,'promotion records the turn');
@@ -184,6 +192,11 @@ const sylveonToolHeal=parseAbility.call(ctx,
 assert.equal(sylveonToolHeal.action,'healOwnOne','Tool-dependent healing Ability action');
 assert.equal(sylveonToolHeal.amount,30,'Tool-dependent healing amount');
 assert.equal(sylveonToolHeal.requiresSelfHasTool,true,'Tool-dependent healing requires this Ability holder to have a Tool');
+const switchOpponentAbility=parseAbility.call(ctx,
+  "Once during your turn, if this Pokémon is in the Active Spot, you may switch out your opponent's Active Basic Pokémon to the Bench. (Your opponent chooses the new Active Pokémon.)");
+assert.equal(switchOpponentAbility.action,'switchOpponentActiveToBench','opponent-selected switch Ability action');
+assert.equal(switchOpponentAbility.requiresActive,true,'switch Ability Active Spot condition');
+assert.equal(switchOpponentAbility.requireBasic,true,'switch Ability Basic-only replacement condition');
 const arceusConditional=parseAbility.call(ctx,"Once during your turn, if you have Arceus or Arceus ex in play, you may do 30 damage to your opponent's Active Pokémon.");
 assert.equal(arceusConditional.action,'damageOpponentActive','conditional Ability damage action');
 assert.equal(arceusConditional.amount,30,'conditional Ability damage amount');
