@@ -26,3 +26,14 @@ jobs:
             echo "Running ${test_file}"
             node "${test_file}"
           done
+      - name: Audit card effect parser coverage
+        continue-on-error: true
+        run: |
+          node scripts/audit-card-effect-support.js --json "$RUNNER_TEMP/card-effect-support-audit.json"
+      - name: Upload card effect audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: card-effect-support-audit
+          path: ${{ runner.temp }}/card-effect-support-audit.json
+          if-no-files-found: warn
