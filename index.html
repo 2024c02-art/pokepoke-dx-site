@@ -6949,6 +6949,8 @@ const PACK_CATALOG_DATA = {
         if(evolvesSearchMatch)return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckEvolvesFrom:evolvesSearchMatch[1].trim()};
         const energyTypeFromText=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
         if((m=t.match(/^Choose (\d+) of your Benched (?:Pokémon|Pokemon)\. For each of those (?:Pokémon|Pokemon), take a \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to that (?:Pokémon)$/i)))return {attachEnergyFromZone:1,attachEnergyType:energyTypeFromText(m[2]),attachEnergyTarget:'multiBench',attachEnergyTargetCount:Number(m[1])};
+        if(/^Before doing damage, discard all Pokémon Tools from your opponent's Active Pokémon$/i.test(t))return {discardOpponentActiveToolsBeforeDamage:true};
+        if((m=t.match(/^If this (?:Pokémon|Pokemon) has a Pokémon Tool attached, this attack does (\d+) more damage$/i)))return {bonusIfSelfHasTool:Number(m[1])};
         if((m=t.match(/^Reveal all of your (?:Pokémon|Pokemon) in play and in your hand that have the Puppy Pile attack, and this attack does (\d+) damage for each (?:Pokémon|Pokemon) you revealed in this way$/i)))return {bonusPerPuppyPilePokemon:Number(m[1])};
         if((m=t.match(/^This attack also does (\d+) damage to 1 of your Benched (?:Pokémon|Pokemon)$/i)))return {selfBenchDamageTarget:Number(m[1])};
         if((m=t.match(/^Take (?:a|(\d+)) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to this (?:Pokémon|Pokemon)$/i)))return {attachEnergyFromZone:Number(m[1]||1),attachEnergyType:energyTypeFromText(m[2]),attachEnergyTarget:'self'};
@@ -7104,6 +7106,7 @@ const PACK_CATALOG_DATA = {
         if(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, it can evolve during your first turn or the turn you play it$/i.test(t))return {passive:true,allowEvolutionOnOwnFirstTurn:true,allowEvolutionOnTurnPlayed:true};
         if((m=t.match(/^If you have another ([A-Za-z][A-Za-z0-9'♀♂ .-]*) in play, this (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,retreatCostReductionIfAnotherNamedPokemonInPlay:m[1].trim(),retreatCostReduction:Number(m[2])};
         const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
+        if((m=t.match(/^If this (?:Pokémon|Pokemon) has a Pokémon Tool attached, attacks used by this (?:Pokémon|Pokemon) cost (\d+) less \[([A-Za-z]+)\] Energy$/i)))return {passive:true,attackCostReductionIfToolAttached:true,attackCostReduction:Number(m[1]),attackCostReductionType:typeOf(m[2])};
         if(/^If any damage is done to this (?:Pokémon|Pokemon) by attacks, flip a coin\. If heads, prevent that damage$/i.test(t))return {passive:true,flipCoinToPreventAttackDamage:true};
         if((m=t.match(/^Once during your turn, when you play this (?:Pokémon|Pokemon) from your hand to evolve 1 of your (?:Pokémon|Pokemon), you may take (?:a|1) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to your Active \[([A-Za-z]+)\] (?:Pokémon|Pokemon)$/i)))return {trigger:'onEvolve',action:'attachEnergyOnEvolveToActiveType',energyType:typeOf(m[1]),targetPokemonType:typeOf(m[2])};
 
@@ -8404,7 +8407,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       createInst(cardId, turnPlayed = 0) {
         const b = CARD_MAP[cardId];
-        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, attackNameBlockUntilTurn: 0, attackCostIncrease: 0, attackCostIncreaseUntilTurn: 0, retreatCostIncrease: 0, retreatCostIncreaseUntilTurn: 0, blockedAttackNames: [], under: [] };
+        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], tool: null, turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, attackNameBlockUntilTurn: 0, attackCostIncrease: 0, attackCostIncreaseUntilTurn: 0, retreatCostIncrease: 0, retreatCostIncreaseUntilTurn: 0, blockedAttackNames: [], under: [] };
       },
 
       pickRandomEnergy(types) {
@@ -8538,6 +8541,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (!Array.isArray(inst.energies) || inst.energies.length > 100 || inst.energies.some(t => !ENERGY_TYPES.includes(t))) return null;
         const under = Array.isArray(inst.under) ? inst.under : [];
         if (under.length > 2 || under.some(id => typeof id !== 'string' || !CARD_MAP[id])) return null;
+        const tool = inst.tool == null ? null : (typeof inst.tool === 'string' && CARD_MAP[inst.tool]?.category === 'Trainer' && CARD_MAP[inst.tool]?.subType === 'Tool' ? inst.tool : undefined);
+        if (tool === undefined) return null;
         const allowedStatus=['Asleep','Paralyzed','Confused'];
         const allowedStatusEffects=['Poisoned','Burned'];
         const status=allowedStatus.includes(inst.status)?inst.status:null;
@@ -8557,7 +8562,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(blockedAttackNames.length>3||blockedAttackNames.some(name=>typeof name!=='string'||name.length>100))return null;
         return {
           cardId: inst.cardId, hp: Math.floor(hp), maxHp: Math.floor(maxHp),
-          energies: [...inst.energies], turnPlayed,
+          energies: [...inst.energies], tool, turnPlayed,
           abilityUsed: !!inst.abilityUsed, status, statusEffects, statusUntilTurn, ...effectTurns, attackDamageReduction, attackDamagePenalty, attackCostIncrease:Math.max(0,Math.min(5,Number(inst.attackCostIncrease||0))), retreatCostIncrease:Math.max(0,Math.min(5,Number(inst.retreatCostIncrease||0))), blockedAttackNames:[...blockedAttackNames], under: [...under]
         };
       },
@@ -9162,6 +9167,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (c.category === 'Trainer') {
           if(Number(this.p.trainerBlockedUntilTurn||0)>=this.turn) return false;
           if(c.subType!=='Supporter'&&Number(this.p.itemBlockedUntilTurn||0)>=this.turn) return false;
+          if(c.subType==='Tool')return !![this.p.active,...this.p.bench].some(inst=>inst&&!inst.tool);
           return c.subType === 'Supporter' ? this.canUseSupporter('player') : true;
         }
         return false;
@@ -9338,6 +9344,21 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
 
+      playPokemonTool(side,hIdx,z,i) {
+        const board=side==='player'?this.p:this.o;
+        const id=board?.hand?.[hIdx],tool=id&&CARD_MAP[id];
+        const inst=z==='active'?board?.active:board?.bench?.[i];
+        if(this.over||this.actionLocked||this.phase!=='play'||this.currentSide!==side||
+          !tool||tool.category!=='Trainer'||tool.subType!=='Tool'||!inst||inst.tool)return false;
+        board.hand.splice(hIdx,1);
+        inst.tool=id;
+        sound.draw();
+        this.log(`${getCardDisplayName(tool)}を${getCardDisplayName(CARD_MAP[inst.cardId])}につけた！`);
+        this.render();
+        if(side==='player'&&this.isOnlineP2P)this.syncToPeer(false);
+        return true;
+      },
+
       async execTrainer(side, hIdx) {
         if (this.over || this.actionLocked) return;
         const s = side === 'player' ? this.p : this.o, opp = side === 'player' ? this.o : this.p;
@@ -9355,8 +9376,20 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           if (side === 'player') ui.toast('このターンはサポートを使えません');
           return;
         }
+        if(c.subType==='Tool'){
+          const targets=[{z:'active',i:0,inst:s.active},...s.bench.map((inst,i)=>({z:'bench',i,inst}))].filter(t=>t.inst&&!t.inst.tool);
+          if(!targets.length){if(side==='player')ui.toast('どうぐをつけられるポケモンがいません');return;}
+          if(side==='player'){
+            const html=targets.map(t=>`<div onclick="battle.playPokemonTool('player',${hIdx},'${t.z}',${t.i});ui.closeSelectModal();" class="p-3 rounded-2xl bg-slate-50 hover:bg-amber-50 border cursor-pointer flex flex-col items-center">${ui.renderMiniCard(t.inst.cardId)}<span class="text-xs font-black text-amber-700 mt-1">どうぐをつける</span></div>`).join('');
+            ui.openSelectModal(`${getCardDisplayName(c)}：つけるポケモンを選択`,html,false);
+          }else{
+            const target=targets.find(t=>t.z==='active')||targets[0];
+            this.playPokemonTool(side,hIdx,target.z,target.i);
+          }
+          return;
+        }
 
-        // A1 cards first show their Japanese names and stages; evolvesFrom is supplied by
+        // A1 cards first show their Japanese names and stages and stages; evolvesFrom is supplied by
         // the lazy gameplay shard. Load the actual card sets before checking Rare Candy.
         // Otherwise Dratini/Dragonite can be incorrectly rejected while the A1 shard is pending.
         // Rare Candy stays in hand until the player confirms a legal target.
@@ -9647,10 +9680,17 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const temporaryType=inst?.attackCostIncreaseType||'Colorless';
         const passiveType=opponentAbility?.opponentActiveAttackCostType||'Colorless';
         const ownAbility=CARD_MAP[inst?.cardId]?.ability?.genericEffect;
-        const colorlessDiscount=ownAbility?.attackCostReductionIfNamedPokemonInPlay&&this.hasPokemonNamed(side,ownAbility.attackCostReductionIfNamedPokemonInPlay)&&ownAbility.attackCostReductionType==='Colorless'?Number(ownAbility.attackCostReduction||0):0;
+        const toolDiscount=!!inst?.tool&&ownAbility?.attackCostReductionIfToolAttached?Math.max(0,Number(ownAbility.attackCostReduction||0)):0;
+        const toolDiscountType=ownAbility?.attackCostReductionType||'Colorless';
+        const namedDiscount=ownAbility?.attackCostReductionIfNamedPokemonInPlay&&this.hasPokemonNamed(side,ownAbility.attackCostReductionIfNamedPokemonInPlay)?Math.max(0,Number(ownAbility.attackCostReduction||0)):0;
+        const colorlessDiscount=(toolDiscount&&toolDiscountType==='Colorless'?toolDiscount:0)+(namedDiscount&&ownAbility.attackCostReductionType==='Colorless'?namedDiscount:0);
+        const typedDiscounts={};
+        if(toolDiscount&&toolDiscountType!=='Colorless')typedDiscounts[toolDiscountType]=toolDiscount;
+        if(namedDiscount&&ownAbility.attackCostReductionType&&ownAbility.attackCostReductionType!=='Colorless')typedDiscounts[ownAbility.attackCostReductionType]=(typedDiscounts[ownAbility.attackCostReductionType]||0)+namedDiscount;
         const required=[...(cost||[]),...Array(temporaryExtra).fill(temporaryType),...Array(passiveExtra).fill(passiveType)];
         let remainingColorless=Math.max(0,required.filter(x=>x==='Colorless').length-colorlessDiscount);
         for(const r of required.filter(x=>x!=='Colorless')){
+          if((typedDiscounts[r]||0)>0){typedDiscounts[r]--;continue;}
           const i=pool.indexOf(r);if(i===-1)return false;pool.splice(i,1);
         }
         return pool.length>=remainingColorless;
@@ -9706,6 +9746,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           return sum+(effect?.passiveAttackDamageBonusType===attC.type?Number(effect.passiveAttackDamageBonus||0):0);
         },0);
         dmg+=teamAttackBonus;
+        if(atk.genericEffect?.bonusIfSelfHasTool&&attInst.tool)dmg+=Number(atk.genericEffect.bonusIfSelfHasTool);
 
         if(atk.genericEffect?.bonusPerPuppyPilePokemon){
           const hasPuppyPile=cardId=>(CARD_MAP[cardId]?.attacks||[]).some(attack=>String(attack.name||'').trim().toLowerCase()==='puppy pile');
@@ -10336,6 +10377,12 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           s.sweetsRelayUses=Number(s.sweetsRelayUses||0)+1;
           s.sweetsRelayUsedTurn=this.turn;
         }
+        if(ge.discardOpponentActiveToolsBeforeDamage&&opp.active?.tool){
+          const discardedTool=opp.active.tool;
+          opp.discard.push(discardedTool);
+          opp.active.tool=null;
+          this.log(getCardDisplayName(CARD_MAP[discardedTool])+'を相手のバトルポケモンからトラッシュ！');
+        }
         const prev = this.calcDamagePreview(s.active, atk, opp.active, side);
         const dmg = prev.final;
         this.resolvingAttackSide = side;
@@ -10700,7 +10747,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             }
             const recipient=owner==='player'?this.o:this.p;
             recipient.points=Math.min(3,Number(recipient.points||0)+points);
-            boards[owner].discard.push(...(inst.under||[]),inst.cardId);
+            boards[owner].discard.push(...(inst.under||[]),inst.cardId,...(inst.tool?[inst.tool]:[]));
+            inst.tool=null;
             this.log(`${getCardDisplayName(card)}はきぜつ！（${recipient.name}に ${points}ポイント！）`);
           }
           for(const owner of ['player','opp']){
@@ -10779,7 +10827,8 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           def.lastKOByOpponentAttack=record;
         }
         const pts = c.pointValue || (c.isEx ? 2 : 1);
-        def.discard.push(...(inst.under || []), inst.cardId);
+        def.discard.push(...(inst.under || []), inst.cardId, ...(inst.tool ? [inst.tool] : []));
+        inst.tool=null;
         // Remove the original Active before resolving a Knock Out-triggered counter.
         // A recursive Knock Out may end the match; leaving this card in the Active slot
         // would then preserve an already-KO'd Pokémon in the final board state.
@@ -11237,6 +11286,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const hasAb = c.ability && !c.ability.passive && !inst.abilityUsed && side === 'player' && !this.actionLocked && this.phase === 'play' && this.currentSide === 'player';
         const conditionLabels={Poisoned:'どく',Burned:'やけど',Asleep:'ねむり',Paralyzed:'マヒ',Confused:'こんらん'};
         const conditionHtml=[...(inst.statusEffects||[]),...(inst.status?[inst.status]:[])].map(status=>conditionLabels[status]?'<span class="px-1 py-0.5 rounded bg-slate-900/90 text-white text-[7px] font-black">'+conditionLabels[status]+'</span>':'').join('');
+        const toolHtml=inst.tool?`<div class="mt-0.5 px-1 rounded bg-amber-100 border border-amber-300 text-amber-900 text-[7px] font-black truncate max-w-full">どうぐ：${escapeHtml(getCardDisplayName(CARD_MAP[inst.tool]))}</div>`:'';
 
         return `
           <div ${dropAttr} onclick="battle.inspectFieldPokemon('${side}','${z}',${i})" class="pk-card border-${c.rarity} card-bg-${c.type} ${canAtk ? 'playable-glow' : ''} ${dropHighlight} ${isActive ? 'w-28 h-36 sm:w-32 sm:h-40 p-2' : 'w-20 h-28 sm:w-24 sm:h-32 p-1.5'} flex flex-col justify-between cursor-pointer relative">
@@ -11253,6 +11303,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
               ${canAtk ? '<span class="absolute bottom-0.5 px-1.5 rounded bg-emerald-600 text-white text-[8px] font-black animate-pulse">ワザ可!</span>' : ''}
             </div>
             <div class="flex flex-wrap gap-0.5 mt-0.5 justify-center">${inst.energies.map(e => renderTypeBadgeSvg(e, 13)).join('')}</div>
+            ${toolHtml}
           </div>
         `;
       },
