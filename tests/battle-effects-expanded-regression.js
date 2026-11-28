@@ -196,7 +196,7 @@ const switchOpponentAbility=parseAbility.call(ctx,
   "Once during your turn, if this Pokémon is in the Active Spot, you may switch out your opponent's Active Basic Pokémon to the Bench. (Your opponent chooses the new Active Pokémon.)");
 assert.equal(switchOpponentAbility.action,'switchOpponentActiveToBench','opponent-selected switch Ability action');
 assert.equal(switchOpponentAbility.requiresActive,true,'switch Ability Active Spot condition');
-assert.equal(switchOpponentAbility.requireBasic,true,'switch Ability Basic-only replacement condition');
+assert.equal(switchOpponentAbility.requireBasic,true,'switch Ability requires a Basic Active target');
 const arceusConditional=parseAbility.call(ctx,"Once during your turn, if you have Arceus or Arceus ex in play, you may do 30 damage to your opponent's Active Pokémon.");
 assert.equal(arceusConditional.action,'damageOpponentActive','conditional Ability damage action');
 assert.equal(arceusConditional.amount,30,'conditional Ability damage amount');
