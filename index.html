@@ -7194,7 +7194,8 @@ const PACK_CATALOG_DATA = {
         if(/^Once during your turn, you may choose either player\. Look at the top card of that player's deck$/i.test(t))return {action:'lookAtTopEitherDeck'};
         if((m=t.match(/^Once during your turn, you may heal (\d+) damage from each of your(?: \[([A-Za-z]+)\])? (?:Pokémon|Pokemon)$/i)))return {action:'healEachOwn',amount:Number(m[1]),targetPokemonType:typeOf(m[2])};
         if((m=t.match(/^Once during your turn, you may heal (\d+) damage from your Active (?:Pokémon|Pokemon)$/i)))return {action:'healActive',amount:Number(m[1])};
-        if((m=t.match(/^Once during your turn, (?:(if this (?:Pokémon|Pokemon) has a Pokémon Tool attached, )?(?:if this (?:Pokémon|Pokemon) is in the Active Spot, )?)you may heal (\d+) damage from 1 of your (?:Pokémon|Pokemon)$/i)))return {action:'healOwnOne',amount:Number(m[2]),requiresSelfHasTool:!!m[1],requiresActive:/if this (?:Pokémon|Pokemon) is in the Active Spot/i.test(t)};
+        if((m=t.match(/^Once during your turn, (?:(if this (?:Pokémon|Pokemon) has a Pokémon Tool attached, )?(?:if this (?:Pokémon|Pokemon) is in the Active Spot, )?)you may heal (\d+) damage from 1 of your (?:Pokémon|Pokemon)$/i)))        if((m=t.match(/^Once during your turn, you may heal (\d+) damage from 1 of your (?:Pokémon|Pokemon) ex that has any Energy attached\. If you do, discard a random Energy from that (?:Pokémon|Pokemon)$/i)))return {action:'healOwnOne',amount:Number(m[1]),requiresPokemonEx:true,requiresTargetEnergy:true,discardRandomEnergyFromTarget:true};
+return {action:'healOwnOne',amount:Number(m[2]),requiresSelfHasTool:!!m[1],requiresActive:/if this (?:Pokémon|Pokemon) is in the Active Spot/i.test(t)};
         if((m=t.match(/^Once during your turn, you may do (\d+) damage to 1 of your opponent's (?:Pokémon|Pokemon)$/i)))return {action:'damageOpponentOne',amount:Number(m[1])};
         if((m=t.match(/^Once during your turn, if you have Arceus or Arceus ex in play, you may do (\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {action:'damageOpponentActive',amount:Number(m[1]),requiresOwnPokemonNamed:'Arceus'};
         if((m=t.match(/^Once during your turn, you may do (\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {action:'damageOpponentActive',amount:Number(m[1])};
@@ -10201,7 +10202,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }
         }
         let candidates=[];
-        if(ge.action==='healOwnOne')candidates=own.filter(x=>x.inst.hp<x.inst.maxHp);
+        if(ge.action==='healOwnOne')candidates=own.filter(x=>x.inst.hp<x.inst.maxHp&&(!ge.requiresPokemonEx||!!CARD_MAP[x.inst.cardId]?.isEx)&&(!ge.requiresTargetEnergy||!!x.inst.energies?.length));
         if(ge.action==='moveDamageToSelf')candidates=own.filter(x=>x.inst!==inst&&x.inst.hp<x.inst.maxHp);
         if(ge.action==='damageOpponentOne')candidates=enemy.filter(x=>x.inst.hp>0);
         if(ge.action==='damageOpponentActive'&&!opp.active){if(side==='player')ui.toast('相手のバトルポケモンがいません');return false;}
@@ -10244,7 +10245,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }else if(ge.action==='healActive'){
           if(!board.active||board.active.hp>=board.active.maxHp){if(side==='player')ui.toast('バトルポケモンのHPは満タンです');return false;}
           board.active.hp=Math.min(board.active.maxHp,board.active.hp+Number(ge.amount));this.log(`${ability.name}！バトルポケモンのHPを${Number(ge.amount)}回復！`);
-        }else if(ge.action==='healOwnOne'&&chosen){chosen.inst.hp=Math.min(chosen.inst.maxHp,chosen.inst.hp+Number(ge.amount));this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のHPを${Number(ge.amount)}回復！`);}
+        }else if(ge.action==='healOwnOne'&&chosen){
+          const healed=Math.min(chosen.inst.maxHp,chosen.inst.hp+Number(ge.amount));
+          chosen.inst.hp=healed;
+          this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のHPを${healed}回復！`);
+          if(ge.discardRandomEnergyFromTarget&&chosen.inst.energies?.length){
+            const energyIndex=Math.floor(Math.random()*chosen.inst.energies.length);
+            const discardedEnergy=chosen.inst.energies.splice(energyIndex,1)[0];
+            this.log(`${ability.name}！対象の${TYPE_META[discardedEnergy]?.code||discardedEnergy}エネルギーをトラッシュ！`);
+          }
+        }
         else if(ge.action==='damageOpponentOne'&&chosen){chosen.inst.hp-=Number(ge.amount);this.log(`${ability.name}！相手の${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${Number(ge.amount)}ダメージ！`);if(chosen.inst.hp<=0)this.checkKO(side==='player'?'opp':'player',chosen.z,chosen.i,chosen.z==='bench');}
         else if(ge.action==='moveActiveDamageToSelf'){
           const amount=Math.min(Math.max(0,Number(ge.amount)||0),Math.max(0,board.active.maxHp-board.active.hp));
