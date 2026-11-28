@@ -7103,6 +7103,7 @@ const PACK_CATALOG_DATA = {
         let m;
         if(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, it can evolve during your first turn or the turn you play it$/i.test(t))return {passive:true,allowEvolutionOnOwnFirstTurn:true,allowEvolutionOnTurnPlayed:true};
         if((m=t.match(/^If you have another ([A-Za-z][A-Za-z0-9'♀♂ .-]*) in play, this (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,retreatCostReductionIfAnotherNamedPokemonInPlay:m[1].trim(),retreatCostReduction:Number(m[2])};
+        if((m=t.match(/^Once during your turn, when you play this (?:Pokémon|Pokemon) from your hand to evolve 1 of your (?:Pokémon|Pokemon), you may take (?:a|1) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to your Active \[([A-Za-z]+)\] (?:Pokémon|Pokemon)$/i)))return {trigger:'onEvolve',action:'attachEnergyOnEvolveToActiveType',energyType:typeOf(m[1]),targetPokemonType:typeOf(m[2])};
         const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
 
         if((m=t.match(/^At the beginning of your turn, if this (?:Pokémon|Pokemon) is in the Active Spot, put a random \[([A-Za-z]+)\] (?:Pokémon|Pokemon) from your deck into your hand$/i)))return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckPokemonType:typeOf(m[1]),trigger:'turnStart',requiresActive:true};
@@ -9229,6 +9230,15 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const dmg = t.maxHp - t.hp;
         t.under = [...(t.under || []), t.cardId]; t.cardId = evoId; t.maxHp = evoC.hp; t.hp = Math.max(10, evoC.hp - dmg); t.turnPlayed = this.turn; t.abilityUsed = false;
         t.status = null; t.statusEffects = []; t.statusUntilTurn = 0; t.temporaryFlags = {};
+        const evolutionAbility=evoC.ability?.genericEffect;
+        if(evolutionAbility?.action==='attachEnergyOnEvolveToActiveType'){
+          const target=board.active;
+          if(target&&board.energyTypes?.includes(evolutionAbility.energyType)&&CARD_MAP[target.cardId]?.type===evolutionAbility.targetPokemonType){
+            target.energies.push(evolutionAbility.energyType);
+            this.nightmareAura(side,target,evolutionAbility.energyType);
+            this.log(`${getCardDisplayName(evoC)}の特性！バトルポケモンに${TYPE_META[evolutionAbility.energyType]?.code||evolutionAbility.energyType}エネルギーをつけた！`);
+          }
+        }
         sound.rarePull(); battleVfx.triggerBurst(side, '#0ea5e9', '#a855f7');
         this.showCutin('進化！', `${getCardDisplayName(evoC)} に進化！`);
         this.log(`${getCardDisplayName(evoC)}に進化した！`);
