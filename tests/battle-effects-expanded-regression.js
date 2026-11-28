@@ -215,4 +215,56 @@ for (const [methodName,signature] of [
     methodName+' must use the same per-Pokémon evolution timing rule');
 }
 
+
+const evolveEnergyEffect=parseAbility.call(ctx,
+  "Once during your turn, when you play this Pokémon from your hand to evolve 1 of your Pokémon, you may take a [R] Energy from your Energy Zone and attach it to your Active [R] Pokémon.");
+assert.equal(evolveEnergyEffect.trigger,'onEvolve','evolution Ability trigger');
+assert.equal(evolveEnergyEffect.action,'attachEnergyOnEvolveToActiveType','evolution Energy action');
+assert.equal(evolveEnergyEffect.energyType,'Fire','evolution Energy type');
+assert.equal(evolveEnergyEffect.targetPokemonType,'Fire','evolution target type');
+const evolutionCardMap={
+  fireBasic:{name:'Emberling',category:'Pokemon',stage:'Basic',type:'Fire',hp:60},
+  fireEvolved:{name:'Flarewing',category:'Pokemon',stage:'Stage1',type:'Fire',hp:100,evolvesFrom:'Emberling',ability:{genericEffect:evolveEnergyEffect}},
+  waterBasic:{name:'Waterlet',category:'Pokemon',stage:'Basic',type:'Water',hp:60},
+  waterEvolved:{name:'Watersaur',category:'Pokemon',stage:'Stage1',type:'Water',hp:100,evolvesFrom:'Waterlet',ability:{genericEffect:evolveEnergyEffect}}
+};
+const evolveStart=html.indexOf('evolveCard(side, hIdx, z, i, allowRareCandy = false, deferRenderAndSync = false) {');
+const evolveEnd=html.indexOf('\n      },',evolveStart);
+assert.ok(evolveStart>=0&&evolveEnd>evolveStart,'evolveCard method exists');
+const evolveCard=new Function('CARD_MAP','isEvolutionFrom','isKnownRareCandyLine','CARDS','sound','battleVfx','getCardDisplayName','TYPE_META',
+  'return ({'+html.slice(evolveStart,evolveEnd+8)+'}).evolveCard;')(
+  evolutionCardMap,
+  (evo,base)=>evo.evolvesFrom===base.name,
+  ()=>false,
+  [],
+  {rarePull(){}},
+  {triggerBurst(){}},
+  card=>card?.name||'Pokémon',
+  {Fire:{code:'炎'}}
+);
+function evolutionContext(active,bench,hand){
+  const side={active,bench,hand,energyTypes:['Fire']};
+  return {
+    p:side,o:{active:null,bench:[]},turn:3,isOnlineP2P:false,
+    canEvolveInstanceNow(_side,inst){return Number(inst.turnPlayed)<this.turn;},
+    nightmareAuraCalls:[],logs:[],
+    nightmareAura(_side,target,energy){this.nightmareAuraCalls.push({target,energy});return false;},
+    showCutin(){},log(message){this.logs.push(message);},render(){},syncToPeer(){}
+  };
+}
+const activeFire={cardId:'fireBasic',hp:60,maxHp:60,turnPlayed:1,energies:[],under:[]};
+let evolveContext=evolutionContext(activeFire,[],['fireEvolved']);
+assert.equal(evolveCard.call(evolveContext,'player',0,'active',0),true,'eligible Fire Pokémon evolves');
+assert.equal(activeFire.cardId,'fireEvolved');
+assert.deepEqual(activeFire.energies,['Fire'],'evolving Ability attaches Energy to the matching Active Pokémon');
+assert.equal(evolveContext.nightmareAuraCalls.length,1,'Energy attachment triggers existing on-attach Ability processing');
+
+const activeWater={cardId:'waterBasic',hp:60,maxHp:60,turnPlayed:1,energies:[],under:[]};
+const benchWater={cardId:'waterBasic',hp:60,maxHp:60,turnPlayed:1,energies:[],under:[]};
+evolveContext=evolutionContext(activeWater,[benchWater],['waterEvolved']);
+assert.equal(evolveCard.call(evolveContext,'player',0,'bench',0),true,'eligible Water Pokémon evolves');
+assert.equal(benchWater.cardId,'waterEvolved');
+assert.deepEqual(activeWater.energies,[],'non-Fire Active Pokémon does not receive Fire Energy');
+assert.equal(evolveContext.nightmareAuraCalls.length,0,'mismatched target type does not trigger Energy attachment');
+
 console.log('All expanded battle-effect regression checks passed.');
