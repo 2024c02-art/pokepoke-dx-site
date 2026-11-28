@@ -7125,6 +7125,7 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If this (?:Pokémon|Pokemon) has no damage on it, this attack does (\d+) more damage$/i)))return {bonusIfSelfUndamaged:Number(m[1])};
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) has more remaining HP than this (?:Pokémon|Pokemon), this attack does (\d+) more damage$/i)))return {bonusIfOpponentHasMoreHp:Number(m[1])};
         if((m=t.match(/^If this (?:Pokémon|Pokemon) evolved during this turn, this attack does (\d+) more damage$/i)))return {bonusIfEvolvedThisTurn:Number(m[1])};
+        if((m=t.match(/^If this (?:Pokémon|Pokemon) moved from your Bench to the Active Spot this turn, this attack does (\d+) more damage$/i)))return {bonusIfMovedFromBenchToActive:Number(m[1])};
         const clauses=t.split(/(?<=\.)\s+(?=[A-Z])/);
         if(clauses.length>1){const combined={};for(const clause of clauses){const part=this.parseGenericEffect(clause);if(part)Object.assign(combined,part);}if(Object.keys(combined).length)return combined;}
         return null;
@@ -8436,7 +8437,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       createInst(cardId, turnPlayed = 0) {
         const b = CARD_MAP[cardId];
-        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], tool: null, turnPlayed, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, attackNameBlockUntilTurn: 0, attackCostIncrease: 0, attackCostIncreaseUntilTurn: 0, retreatCostIncrease: 0, retreatCostIncreaseUntilTurn: 0, blockedAttackNames: [], under: [] };
+        return { cardId, hp: b.hp, maxHp: b.hp, energies: [], tool: null, turnPlayed, movedToActiveTurn: null, abilityUsed: false, status: null, statusEffects: [], statusUntilTurn: 0, preventAttackDamageUntilTurn: 0, attackDamageReduction: 0, attackDamageReductionUntilTurn: 0, attackDamagePenalty: 0, attackDamagePenaltyUntilTurn: 0, attackFailureOnTailsUntilTurn: 0, retreatBlockedUntilTurn: 0, attackBlockedUntilTurn: 0, attackNameBlockUntilTurn: 0, attackCostIncrease: 0, attackCostIncreaseUntilTurn: 0, retreatCostIncrease: 0, retreatCostIncreaseUntilTurn: 0, blockedAttackNames: [], under: [] };
       },
 
       pickRandomEnergy(types) {
@@ -9861,6 +9862,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(atk.genericEffect?.bonusIfSelfUndamaged&&attInst.hp>=attInst.maxHp)dmg+=Number(atk.genericEffect.bonusIfSelfUndamaged);
         if(atk.genericEffect?.bonusIfOpponentHasMoreHp&&defInst.hp>attInst.hp)dmg+=Number(atk.genericEffect.bonusIfOpponentHasMoreHp);
         if(atk.genericEffect?.bonusIfEvolvedThisTurn&&Number(attInst.turnPlayed)===this.turn)dmg+=Number(atk.genericEffect.bonusIfEvolvedThisTurn);
+        if(atk.genericEffect?.bonusIfMovedFromBenchToActive&&Number(attInst.movedToActiveTurn)===Number(this.turn))dmg+=Number(atk.genericEffect.bonusIfMovedFromBenchToActive);
 
         switch (atk.fx) {
           case 'bench_lightning30': dmg = s.bench.filter(b => CARD_MAP[b.cardId].type === 'Lightning').length * 30 + bonus; break;
@@ -9916,6 +9918,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const old = opp.active;
         this.clearSpecialConditions(old);
         opp.active = target;
+        opp.active.movedToActiveTurn = this.turn;
         opp.bench[benchIndex] = old;
         this.log(`ブラッキーexの「ダークシグナル」！${getCardDisplayName(CARD_MAP[target.cardId])}をバトル場に呼び出した！`);
         this.render();
@@ -10046,9 +10049,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         else if(ge.action==='attachEnergyOwnOne'&&chosen){chosen.inst.energies.push(ge.energyType);this.nightmareAura(side,chosen.inst,ge.energyType);this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${TYPE_META[ge.energyType]?.code||ge.energyType}エネルギー+1！`);}
         else if(ge.action==='moveBenchEnergyToActive'&&chosen){const ix=chosen.inst.energies.indexOf(ge.energyType);if(ix<0||!board.active)return false;chosen.inst.energies.splice(ix,1);board.active.energies.push(ge.energyType);this.log(`${ability.name}！ベンチからバトルポケモンにエネルギーを移動！`);}
         else if(ge.action==='moveAllBenchEnergyToActive'&&chosen&&board.active){const moved=chosen.inst.energies.filter(e=>e===ge.energyType);chosen.inst.energies=chosen.inst.energies.filter(e=>e!==ge.energyType);moved.forEach(e=>board.active.energies.push(e));if(!moved.length)return false;this.log(`${ability.name}！ベンチからバトルポケモンに${moved.length}個のエネルギーを移動！`);}
-        else if(ge.action==='gustOpponent'&&chosen&&opp.active){const old=opp.active;this.clearSpecialConditions(old);opp.active=chosen.inst;opp.bench[chosen.i]=old;this.log(`${ability.name}！相手の${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}をバトル場に呼び出した！`);}
-        else if(ge.action==='switchOwnActiveWithBench'&&chosen&&board.active){const old=board.active;this.clearSpecialConditions(old);board.active=chosen.inst;board.bench[chosen.i]=old;this.log(`${ability.name}！自分のバトルポケモンを入れ替えた！`);}
-        else if(ge.action==='switchSelfFromBench'&&board.active&&z==='bench'){const old=board.active;this.clearSpecialConditions(old);board.active=inst;board.bench[i]=old;this.log(`${ability.name}！特性を持つポケモンをバトル場に出した！`);}
+        else if(ge.action==='gustOpponent'&&chosen&&opp.active){const old=opp.active;this.clearSpecialConditions(old);opp.active=chosen.inst;opp.active.movedToActiveTurn=this.turn;opp.bench[chosen.i]=old;this.log(`${ability.name}！相手の${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}をバトル場に呼び出した！`);}
+        else if(ge.action==='switchOwnActiveWithBench'&&chosen&&board.active){const old=board.active;this.clearSpecialConditions(old);board.active=chosen.inst;board.active.movedToActiveTurn=this.turn;board.bench[chosen.i]=old;this.log(`${ability.name}！自分のバトルポケモンを入れ替えた！`);}
+        else if(ge.action==='switchSelfFromBench'&&board.active&&z==='bench'){const old=board.active;this.clearSpecialConditions(old);board.active=inst;board.active.movedToActiveTurn=this.turn;board.bench[i]=old;this.log(`${ability.name}！特性を持つポケモンをバトル場に出した！`);}
         else if(ge.action==='applyOpponentStatus'||ge.action==='applyOpponentStatusIfHeads'){if(!opp.active){if(side==='player')ui.toast('相手のバトルポケモンがいません');return false;}const heads=ge.action!=='applyOpponentStatusIfHeads'||Math.random()<0.5;if(heads){this.applySpecialCondition(opp.active,ge.status);this.log(`${ability.name}！相手のバトルポケモンを${ge.status}にした！`);}else this.log(`${ability.name}！コイントスはウラ。効果は発動しなかった。`);}
         else return false;
         if(!ge.repeatable)inst.abilityUsed=true;sound.energy();battleVfx.triggerBurst(side);this.render();
@@ -10687,6 +10690,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           const outgoing=s.active;
           this.clearSpecialConditions(outgoing);
           s.active=s.bench[choice.bench];
+          s.active.movedToActiveTurn=this.turn;
           s.bench[choice.bench]=outgoing;
           this.log(`${getCardDisplayName(CARD_MAP[s.active.cardId])}とバトルポケモンを入れ替えた！`);
         }
@@ -10809,7 +10813,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(!this.isOnlineP2P&&playerNeedsPromotion&&cpuNeedsPromotion&&playerPromotesFirst){
           this.pendingCpuPromotionAfterPlayer=true;
         }else if(!this.isOnlineP2P&&cpuNeedsPromotion){
-          this.o.active=this.o.bench.shift();
+          this.o.active=this.o.bench.shift();this.o.active.movedToActiveTurn=this.turn;
           this.log(`相手は${getCardDisplayName(CARD_MAP[this.o.active.cardId])}をバトル場に出した！`);
         }
         if(playerNeedsPromotion){
@@ -10896,6 +10900,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         } else if (!this.isOnlineP2P) {
           // CPU's board is controlled locally; select its replacement automatically.
           def.active = def.bench.shift();
+          def.active.movedToActiveTurn = this.turn;
           this.log(`相手は${getCardDisplayName(CARD_MAP[def.active.cardId])}をバトル場に出した！`);
         }
         // In P2P the defender's client chooses its own replacement after receiving receiverBoard.active=null.
@@ -10905,6 +10910,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const s = side === 'player' ? this.p : this.o;
         if (!s || !s.bench[bi]) return;
         s.active = s.bench.splice(bi, 1)[0];
+        s.active.movedToActiveTurn = this.turn;
         if (side === 'player') {
           this.promotionModalOpen = false; this.pendingSelfKO = false; this.actionLocked = false;
         }
@@ -10912,7 +10918,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(side==='player'&&this.pendingCpuPromotionAfterPlayer){
           this.pendingCpuPromotionAfterPlayer=false;
           if(!this.isOnlineP2P&&!this.o.active&&this.o.bench.length){
-            this.o.active=this.o.bench.shift();
+            this.o.active=this.o.bench.shift();this.o.active.movedToActiveTurn=this.turn;
             this.log(`相手は${getCardDisplayName(CARD_MAP[this.o.active.cardId])}をバトル場に出した！`);
           }
         }
@@ -11023,7 +11029,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (this.over || this.actionLocked || this.currentSide !== 'player') return;
         if (picked && picked.length) [...picked].sort((a, b) => b - a).forEach(idx => this.p.active.energies.splice(idx, 1));
         else this.p.active.energies.splice(0, cost);
-        const old = this.p.active; this.clearSpecialConditions(old); this.p.active = this.p.bench.splice(bi, 1)[0]; this.p.bench.push(old);
+        const old = this.p.active; this.clearSpecialConditions(old); this.p.active = this.p.bench.splice(bi, 1)[0]; this.p.active.movedToActiveTurn = this.turn; this.p.bench.push(old);
         this.p.retreated = true; sound.draw();
         this.log(`${getCardDisplayName(CARD_MAP[this.p.active.cardId])}に交代した！`);
         this.render();
