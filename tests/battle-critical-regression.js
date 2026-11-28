@@ -124,6 +124,11 @@ assert.match(
   'selected attack-effect damage must calculate Active Weakness'
 );
 assert.match(html, /isBench = z === 'bench'/, 'KO zone must be derived from the actual target zone');
+assert.match(
+  html,
+  /if\(ge\.selfDamage>0\)\{inst\.hp-=Number\(ge\.selfDamage\);this\.checkKO\(side,z,i,z==='bench'\);\}/,
+  'self-damage caused by an Ability must pass its actual Active/Bench zone'
+);
 
 // When a reactive Ability KOs the attacker, later self-effects must not mutate
 // the replacement Pokémon or dereference a cleared Active slot.
