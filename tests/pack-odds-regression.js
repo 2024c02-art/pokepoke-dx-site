@@ -75,9 +75,10 @@ const accountMgr={
   data:{packPoints:0,packPointsByExpansion:{a1:1250,a2:499},collection:{cardA1:0,cardA2:0}},
   saveCurrent(){this.saved=true;}
 };
+const ui={toast(message){this.message=message;}};
 const craftCard=new Function('CARD_MAP','accountMgr','ui','sound','getCardDisplayName',
   'return ({'+craft+'}).craftCard;')(
-    CARD_MAP,accountMgr,{toast(message){this.message=message;}},{energy(){}},card=>card.name
+    CARD_MAP,accountMgr,ui,{energy(){}},card=>card.name
   );
 const deck={render(){this.rendered=true;}};
 craftCard.call(deck,'cardA1');
