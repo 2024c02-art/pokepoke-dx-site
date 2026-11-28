@@ -124,7 +124,7 @@ assert.match(html,/defendingRetreatCostIncreaseNextTurn/);
 
 
 const abilityParserStart=html.indexOf('parseGenericAbility(text) {');
-const abilityParserEnd=html.indexOf('\\n      },',abilityParserStart);
+const abilityParserEnd=html.indexOf('\n      },',abilityParserStart);
 assert.ok(abilityParserStart>=0&&abilityParserEnd>abilityParserStart,'generic Ability parser exists');
 const parseAbility=new Function('return ({'+html.slice(abilityParserStart,abilityParserEnd+8)+'}).parseGenericAbility;')();
 const retreatEffect=parseAbility.call(ctx,"If you have another Beldum in play, this Pokémon's Retreat Cost is 2 less.");
@@ -141,11 +141,11 @@ const retreatCards={
 };
 const hasPokemonNamed=new Function('CARD_MAP','return ({'+html.slice(
   html.indexOf('hasPokemonNamed(side,name,excludeInst=null) {'),
-  html.indexOf('\\n      },',html.indexOf('hasPokemonNamed(side,name,excludeInst=null) {'))+8
+  html.indexOf('\n      },',html.indexOf('hasPokemonNamed(side,name,excludeInst=null) {'))+8
 )+'}).hasPokemonNamed;')(retreatCards);
 const getEffectiveRetreatCost=new Function('CARD_MAP','return ({'+html.slice(
   html.indexOf('getEffectiveRetreatCost(side,inst) {'),
-  html.indexOf('\\n      },',html.indexOf('getEffectiveRetreatCost(side,inst) {'))+8
+  html.indexOf('\n      },',html.indexOf('getEffectiveRetreatCost(side,inst) {'))+8
 )+'}).getEffectiveRetreatCost;')(retreatCards);
 const metangInstance={cardId:'metang',energies:[],retreatCostIncreaseUntilTurn:0};
 const beldumInstance={cardId:'beldum',energies:[]};
