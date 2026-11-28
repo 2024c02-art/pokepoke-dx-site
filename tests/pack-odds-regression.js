@@ -55,7 +55,7 @@ assert.doesNotMatch(open,/forceSr|featuredCard|roll < 0\.35/,
   'there must be no 10-pack guaranteed SR or featured-card shortcut');
 assert.match(open,/sourceSet==='a4b'\|\|sourceSet==='b4b'/,
   'Deluxe Pack families should use their four-card rules');
-assert.match(open,/['"]RR['"],weight:100/,
+assert.match(open,/\[\{rarities:\['RR'\],weight:100\}\]/,
   'Deluxe fourth slot should be four-diamond rarity');
 
 const createDefault=method('createDefault');
