@@ -129,6 +129,7 @@ assert.match(html,/board\.active=inst;board\.active\.movedToActiveTurn=this\.tur
 assert.match(html,/s\.active=s\.bench\[choice\.bench\];\s*s\.active\.movedToActiveTurn=this\.turn/,'attack switch records the turn');
 assert.match(html,/def\.active = def\.bench\.shift\(\);\s*def\.active\.movedToActiveTurn = this\.turn/,'automatic KO promotion records the turn');
 assert.match(html,/this\.o\.active=this\.o\.bench\.shift\(\);this\.o\.active\.movedToActiveTurn=this\.turn/,'CPU batch promotion records the turn');
+assert.match(html,/ge\.requiresSelfHasTool&&!inst\.tool/,'Tool-dependent Abilities validate their attached Tool');
 assert.match(html,/attackDamagePenaltyUntilTurn/);
 assert.match(html,/opponentTrainerLockNextTurn/);
 assert.match(html,/attackFailureOnTailsUntilTurn/);
@@ -162,6 +163,11 @@ const abilityParserStart=html.indexOf('parseGenericAbility(text) {');
 const abilityParserEnd=html.indexOf('\n      },',abilityParserStart);
 assert.ok(abilityParserStart>=0&&abilityParserEnd>abilityParserStart,'generic Ability parser exists');
 const parseAbility=new Function('return ({'+html.slice(abilityParserStart,abilityParserEnd+8)+'}).parseGenericAbility;')();
+const sylveonToolHeal=parseAbility.call(ctx,
+  "Once during your turn, if this Pokémon has a Pokémon Tool attached, you may heal 30 damage from 1 of your Pokémon.");
+assert.equal(sylveonToolHeal.action,'healOwnOne','Tool-dependent healing Ability action');
+assert.equal(sylveonToolHeal.amount,30,'Tool-dependent healing amount');
+assert.equal(sylveonToolHeal.requiresSelfHasTool,true,'Tool-dependent healing requires this Ability holder to have a Tool');
 const arceusConditional=parseAbility.call(ctx,"Once during your turn, if you have Arceus or Arceus ex in play, you may do 30 damage to your opponent's Active Pokémon.");
 assert.equal(arceusConditional.action,'damageOpponentActive','conditional Ability damage action');
 assert.equal(arceusConditional.amount,30,'conditional Ability damage amount');
