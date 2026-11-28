@@ -2222,7 +2222,7 @@
           } else if (msg.type === 'REMOTE_EFFECT') {
             battle.receiveRemoteEffect(msg);
           } else if (msg.type === 'MATCH_END') {
-            const winner = msg.winner === 'player' ? 'player' : 'opp';
+            const winner = msg.winner === 'draw' ? 'draw' : msg.winner === 'player' ? 'player' : 'opp';
             const reason = typeof msg.reason === 'string' ? msg.reason.slice(0, 160) : '相手が勝利しました。';
             battle.endMatch(winner, reason, false);
           } else if (msg.type === 'EMOTE') {
@@ -8801,7 +8801,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       resolvePokemonCheckup(nextSide) {
         const previousSide=nextSide==='player'?'opp':'player';
-        const knockedOut=[];
+
         for(const owner of [previousSide,nextSide]){
           const board=owner==='player'?this.p:this.o;
           const inst=board?.active;
@@ -8837,7 +8837,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
                 opposingBoard.active.hp-=damage;
                 this.showDmg(owner==='player'?'opp-active':'player-active',damage,false);
                 this.log(`${getCardDisplayName(CARD_MAP[source.cardId])}の特性！ねむっている相手に${damage}ダメージ！`);
-                if(opposingBoard.active.hp<=0)knockedOut.push(owner==='player'?'opp':'player');
+
               }
             }
           }
@@ -8888,18 +8888,11 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
             this.drawCards(owner,Number(abilityEffect.endTurnDrawCards));
             this.log(`${getCardDisplayName(CARD_MAP[inst.cardId])}の特性！カードを${Number(abilityEffect.endTurnDrawCards)}枚引いた！`);
           }
-          if(inst.hp<=0) knockedOut.push(owner);
+
         }
         this.resolvingAttackSide=null;
-        for(const owner of knockedOut){
-          if(this.over) break;
-          this.checkKO(owner,'active',0);
-          if(owner==='player'&&this.pendingSelfKO){
-            this.pendingPromotionNext={side:nextSide,incrementTurn:false,onlinePassTurn:this.isOnlineP2P&&nextSide==='opp'};
-          }
-        }
-        if(!this.over&&!this.pendingSelfKO) this.render();
-        return !this.over&&!this.pendingSelfKO;
+        this.resolvingKnockoutBatch=true;
+        return this.resolveKnockoutBatch({nextSide,afterCheckup:true});
       },
 
       startTurn(side) {
@@ -9999,6 +9992,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         const attC = CARD_MAP[s.active.cardId];
         const attackingInst = s.active;
+        const defendingInst = opp.active;
         const attackerIsStillActive = () => s.active === attackingInst;
         const declaredAtk = attC.attacks[atkIdx];
         if (!declaredAtk) return;
@@ -10161,6 +10155,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const prev = this.calcDamagePreview(s.active, atk, opp.active, side);
         const dmg = prev.final;
         this.resolvingAttackSide = side;
+        this.resolvingKnockoutBatch = true;
 
         if (atk.fx === 'trash2') {
           // discard the Energy type/number named in the attack text (matters when Genome Hack copies it)
@@ -10256,13 +10251,6 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に${dmg}ダメージ！${prev.isWeak ? '（弱点+20！）' : ''}`);
         }else if(!(ge.opponentPokemonDamage>0)&&!(ge.randomOpponentPokemonDamage>0)){
           this.log(`${getCardDisplayName(attC)}の「${isGenomeHack ? 'ゲノムハック' : getCardDisplayAttackName(attC,atk,atkIdx)}」！${defendingCardName}に0ダメージ！`);
-        }
-        const defendingAbility=CARD_MAP[opp.active.cardId]?.ability?.genericEffect;
-        if(dmg>0&&defendingAbility?.counterDamageOnAttack>0){
-          const counter=Number(defendingAbility.counterDamageOnAttack);s.active.hp-=counter;
-          this.showDmg(side==='player'?'player-active':'opp-active',counter,false);
-          this.log(getCardDisplayName(CARD_MAP[opp.active.cardId])+'の特性！攻撃した'+getCardDisplayName(attC)+'に'+counter+'ダメージ！');
-          this.checkKO(side,'active',0);
         }
         if(attackerIsStillActive()&&ge.selfHealEqualDamageDone&&dmg>0){attackingInst.hp=Math.min(attackingInst.maxHp,attackingInst.hp+dmg);this.log(`${getCardDisplayName(attC)}は与えたダメージと同じ${dmg}ダメージ分、HPを回復！`);}
         if(ge.opponentPokemonDamage>0&&choice?.targetZone){
@@ -10400,12 +10388,14 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           this.log(`自分のベンチ全員にも${Number(ge.selfBenchDamage)}ダメージ！`);
         }
 
-        for(let bi=s.bench.length-1;bi>=0;bi--){if(s.bench[bi].hp<=0)this.checkKO(side,'bench',bi,true);}
-        for (let bi = opp.bench.length - 1; bi >= 0; bi--) {
-          if (opp.bench[bi].hp <= 0) this.checkKO(side === 'player' ? 'opp' : 'player', 'bench', bi, true);
+        const defendingAbility=CARD_MAP[defendingInst?.cardId]?.ability?.genericEffect;
+        if(dmg>0&&!opponentActiveProtected&&defendingInst&&opp.active===defendingInst&&defendingAbility?.counterDamageOnAttack>0){
+          const counter=Number(defendingAbility.counterDamageOnAttack);
+          attackingInst.hp-=counter;
+          this.showDmg(side==='player'?'player-active':'opp-active',counter,false);
+          this.log(getCardDisplayName(CARD_MAP[defendingInst.cardId])+'の特性！攻撃した'+getCardDisplayName(attC)+'に'+counter+'ダメージ！');
         }
-        this.checkKO(side === 'player' ? 'opp' : 'player', 'active', 0);
-        if (!this.over && selfDamageAttack) this.checkKO(side, 'active', 0);
+        this.resolveKnockoutBatch({attackingSide:side,attackingInst,defendingInst,afterAttack:true});
         if(!this.over&&!this.pendingSelfKO&&atk.genericEffect?.switchSelf&&s.active===attackingInst&&choice&&choice.bench>=0&&s.bench[choice.bench]){
           const outgoing=s.active;
           this.clearSpecialConditions(outgoing);
@@ -10467,6 +10457,79 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         return results;
       },
 
+
+      resolveKnockoutBatch({attackingSide=null,attackingInst=null,defendingInst=null,nextSide=null,afterAttack=false,afterCheckup=false}={}) {
+        this.resolvingKnockoutBatch=false;
+        if(this.over)return false;
+        const boards={player:this.p,opp:this.o};
+        const defenderSide=attackingSide==='player'?'opp':attackingSide==='opp'?'player':null;
+        if(attackingSide&&defenderSide&&attackingInst&&defendingInst&&boards[defenderSide]?.active===defendingInst&&defendingInst.hp<=0){
+          const counter=Number(CARD_MAP[defendingInst.cardId]?.ability?.genericEffect?.counterDamageOnKnockout||0);
+          if(counter>0){
+            attackingInst.hp-=counter;
+            this.showDmg(attackingSide==='player'?'player-active':'opp-active',counter,false);
+            this.log(`${getCardDisplayName(CARD_MAP[defendingInst.cardId])}の特性！きぜつ時に攻撃した${getCardDisplayName(CARD_MAP[attackingInst.cardId])}に${counter}ダメージ！`);
+          }
+        }
+        const knockedOut=[];
+        for(const owner of ['player','opp']){
+          const board=boards[owner];
+          if(board?.active&&board.active.hp<=0)knockedOut.push({owner,zone:'active',inst:board.active});
+          for(const inst of board?.bench||[])if(inst&&inst.hp<=0)knockedOut.push({owner,zone:'bench',inst});
+        }
+        if(knockedOut.length){
+          for(const {owner,inst} of knockedOut){
+            const card=CARD_MAP[inst.cardId]||{};
+            const points=Number(card.pointValue)||(card.isEx?2:1);
+            const recipient=owner==='player'?this.o:this.p;
+            recipient.points=Math.min(3,Number(recipient.points||0)+points);
+            boards[owner].discard.push(...(inst.under||[]),inst.cardId);
+            this.log(`${getCardDisplayName(card)}はきぜつ！（${recipient.name}に ${points}ポイント！）`);
+          }
+          for(const owner of ['player','opp']){
+            const board=boards[owner];
+            const ownerKnockouts=knockedOut.filter(item=>item.owner===owner);
+            if(ownerKnockouts.some(item=>item.zone==='active'&&board.active===item.inst))board.active=null;
+            const removed=new Set(ownerKnockouts.filter(item=>item.zone==='bench').map(item=>item.inst));
+            if(removed.size)board.bench=board.bench.filter(inst=>!removed.has(inst));
+          }
+        }
+        const playerNoPokemon=!this.p.active&&this.p.bench.length===0;
+        const opponentNoPokemon=!this.o.active&&this.o.bench.length===0;
+        const playerWinConditions=Number(this.p.points>=3)+Number(opponentNoPokemon);
+        const opponentWinConditions=Number(this.o.points>=3)+Number(playerNoPokemon);
+        if(playerWinConditions>0||opponentWinConditions>0){
+          if(playerWinConditions===opponentWinConditions){
+            this.endMatch('draw','同時に勝利条件を満たしたため、引き分けです！');
+          }else if(playerWinConditions>opponentWinConditions){
+            this.endMatch('player',this.p.points>=3?'3ポイント先取しました！':'相手の場にポケモンがいなくなりました！');
+          }else{
+            this.endMatch('opp',this.o.points>=3?'3ポイント先取しました！':'自分の場にポケモンがいなくなりました！');
+          }
+          return false;
+        }
+        if(!this.isOnlineP2P&&!this.o.active&&this.o.bench.length){
+          this.o.active=this.o.bench.shift();
+          this.log(`相手は${getCardDisplayName(CARD_MAP[this.o.active.cardId])}をバトル場に出した！`);
+        }
+        if(!this.p.active&&this.p.bench.length){
+          this.pendingSelfKO=true;
+          if(afterCheckup){
+            this.pendingPromotionNext={side:nextSide||'player',incrementTurn:false,onlinePassTurn:this.isOnlineP2P&&nextSide==='opp'};
+          }else if(afterAttack&&attackingSide==='player'){
+            this.pendingPromotionNext={side:'opp',incrementTurn:!this.isOnlineP2P,onlinePassTurn:this.isOnlineP2P};
+          }else if(afterAttack&&attackingSide==='opp'){
+            this.pendingPromotionNext={side:'player',incrementTurn:true,onlinePassTurn:false};
+          }
+          this.render();
+          this.openPromotionSelector();
+          return false;
+        }
+        this.pendingSelfKO=false;
+        if(!this.over)this.render();
+        return true;
+      },
+
       checkKO(defSide, z, i, isBench = false) {
         if (this.over) return false;
         // The actual board zone is authoritative; never trust a stale isBench flag.
@@ -10475,6 +10538,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         const att = defSide === 'player' ? this.o : this.p;
         const inst = z === 'active' ? def.active : def.bench[i];
         if (!inst || inst.hp > 0) return false;
+        if(this.resolvingKnockoutBatch)return true;
 
         const c = CARD_MAP[inst.cardId];
         const knockoutAbility=c?.ability?.genericEffect;
@@ -10878,17 +10942,21 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         document.getElementById('modal-select')?.classList.add('hidden');
         battleVfx.stop();
         if (this.isOnlineP2P && notifyPeer && onlineLobby.conn) {
-          try { onlineLobby.conn.send({ type: 'MATCH_END', winner: winner === 'player' ? 'opp' : 'player', reason }); } catch (e) {}
+          try { onlineLobby.conn.send({ type: 'MATCH_END', winner: winner === 'draw' ? 'draw' : winner === 'player' ? 'opp' : 'player', reason }); } catch (e) {}
         }
+        const draw = winner === 'draw';
         const win = winner === 'player';
         let rpDelta = 0;
 
-        if (this.mode === 'ranked') {
+        if (this.mode === 'ranked' && !draw) {
           rpDelta = win ? 28 : -18;
           accountMgr.data.rating = Math.max(500, (accountMgr.data.rating || 1000) + rpDelta);
         }
 
-        if (win) {
+        if(draw){
+          accountMgr.data.draws=(accountMgr.data.draws||0)+1;
+          accountMgr.data.streak=0;
+        }else if (win) {
           sound.win();
           accountMgr.data.wins = (accountMgr.data.wins || 0) + 1;
           accountMgr.data.streak = (accountMgr.data.streak || 0) + 1;
@@ -10900,15 +10968,15 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         }
         accountMgr.saveCurrent();
 
-        document.getElementById('result-badge').textContent = win ? 'WIN' : 'LOSE';
-        document.getElementById('result-title').textContent = win ? 'VICTORY!' : 'DEFEAT...';
-        document.getElementById('result-title').className = `text-3xl font-black ${win ? 'text-amber-500' : 'text-rose-600'}`;
+        document.getElementById('result-badge').textContent = draw ? 'DRAW' : win ? 'WIN' : 'LOSE';
+        document.getElementById('result-title').textContent = draw ? 'DRAW' : win ? 'VICTORY!' : 'DEFEAT...';
+        document.getElementById('result-title').className = `text-3xl font-black ${draw ? 'text-slate-500' : win ? 'text-amber-500' : 'text-rose-600'}`;
         document.getElementById('result-reason').textContent = reason;
 
         const rk = accountMgr.getRankInfo(accountMgr.data.rating);
         const winHourglass = this.mode === 'ranked' ? 36 : 24;
-        let rewardText = win ? `勝利報酬: 砂時計+${winHourglass}` : '参加賞: 砂時計+6';
-        if (this.mode === 'ranked') {
+        let rewardText = draw ? '引き分け：報酬・レート変動なし' : win ? `勝利報酬: 砂時計+${winHourglass}` : '参加賞: 砂時計+6';
+        if (this.mode === 'ranked' && !draw) {
           rewardText += ` ｜ レート ${rpDelta >= 0 ? '+' + rpDelta : rpDelta} RP → ${accountMgr.data.rating} RP (${rk.title})`;
         }
         document.getElementById('result-reward-box').textContent = rewardText;
