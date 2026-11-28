@@ -7826,7 +7826,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }
           addPulled(choose(hasShinyInMainSlots?PACK_SLOT_RATES.shiny4:PACK_SLOT_RATES.standard4));
           addPulled(choose(hasShinyInMainSlots?PACK_SLOT_RATES.shiny5:PACK_SLOT_RATES.standard5));
-          if(bonusChance>0&&Math.random()<bonusChance){
+          if(bonusChance>0&&theme.some(card=>['S','SSR'].includes(packRarity(card)))&&Math.random()<bonusChance){
             const bonusCard=choose(PACK_SLOT_RATES.bonus);
             if(bonusCard)addPulled(bonusCard);
           }
