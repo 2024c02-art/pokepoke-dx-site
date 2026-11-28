@@ -72,6 +72,10 @@ assert.deepEqual(mixedStatusEffect?.opponentStatusesIfTails, ['Confused'], 'tail
 
 const abilityCases = [
   ["Once during your turn, you may heal 20 damage from each of your Pokémon.", 'action', 'healEachOwn'],
+  ["You must discard a card from your hand in order to use this Ability. Once during your turn, you may draw a card.", 'action', 'discardHandCardDrawOne'],
+  ["Once during your turn, you may move all [Darkness] Energy from each of your Pokémon to this Pokémon.", 'action', 'moveAllOwnEnergyToSelf'],
+  ["As long as this Pokémon is in the Active Spot, whenever you attach an Energy from your Energy Zone to it, it is now Asleep.", 'statusOnEnergyAttach', 'Asleep'],
+  ["Whenever you attach a [Psychic] Energy from your Energy Zone to this Pokémon, heal 20 damage from this Pokémon.", 'healOnEnergyAttach', 20],
   ["Once during your turn, you may take a [Psychic] Energy from your Energy Zone and attach it to this Pokémon. If you use this Ability, your turn ends.", 'endsTurn', true],
   ["Once during your turn, you may put a random Pokémon from your deck into your hand.", 'action', 'searchRandomCardInDeck'],
   ["Once during your turn, you may discard the top card of your opponent's deck.", 'action', 'discardTopOpponentDeck'],
@@ -131,6 +135,64 @@ assert.equal(resolveRandomDeckSearch.call(deckSearchContext, 'player', {
 assert.equal(deckSearchBoard.bench.length, 1, 'the searched Pokémon should enter the Bench');
 assert.equal(deckSearchBoard.bench[0].cardId, 'grassBasic', 'search should respect both type and Stage filters');
 assert.deepEqual(deckSearchBoard.deck, ['fireBasic', 'grassStage1'], 'the selected Pokémon should be removed from the deck');
+
+const genericAbilityMethod = method('resolveGenericAbility');
+const genericAbilityCardMap = {
+  handDraw: { name: 'Hand Draw Pokémon', ability: { name: 'Hand Draw', genericEffect: { action: 'discardHandCardDrawOne' } } },
+  darkCollector: { name: 'Dark Collector', ability: { name: 'Dark Collection', genericEffect: { action: 'moveAllOwnEnergyToSelf', energyType: 'Darkness' } } },
+  energySource: { name: 'Energy Source' },
+  sleepTrigger: { name: 'Sleep Trigger', ability: { name: 'Energy Sleep', genericEffect: { statusOnEnergyAttach: 'Asleep', statusOnEnergyAttachRequiresActive: true } } },
+  healTrigger: { name: 'Heal Trigger', ability: { name: 'Psychic Heal', genericEffect: { energyType: 'Psychic', healOnEnergyAttach: 20 } } }
+};
+const resolveGenericAbility = new Function('CARD_MAP', 'getCardDisplayName', 'TYPE_META', 'sound', 'battleVfx', 'ui',
+  `return ({${genericAbilityMethod}}).resolveGenericAbility;`)(
+  genericAbilityCardMap,
+  card => card?.name || 'Pokémon',
+  { Darkness: { code: '悪' }, Psychic: { code: '超' } },
+  { energy: () => {} },
+  { triggerBurst: () => {} },
+  { toast: () => {}, openSelectModal: () => {}, renderMiniCard: () => '' }
+);
+const abilityEngine = {
+  p: {
+    active: { cardId: 'handDraw', hp: 100, maxHp: 100, energies: [], abilityUsed: false },
+    bench: [], hand: ['discardMe'], discard: [], deck: ['drawnCard'], energyTypes: ['Darkness']
+  },
+  o: { active: null, bench: [], deck: [], hand: [], discard: [] },
+  turn: 4, isOnlineP2P: false, over: false,
+  log() {}, render() {}, syncToPeer() {},
+  drawCards(side, count) {
+    const board = side === 'player' ? this.p : this.o;
+    for (let i = 0; i < count && board.deck.length; i++) board.hand.push(board.deck.shift());
+  },
+  applySpecialCondition(inst, status) { inst.status = status; return true; },
+  nightmareAura() { return false; }
+};
+assert.equal(resolveGenericAbility.call(abilityEngine, 'player', 'active', 0), true, 'discard-and-draw Ability should resolve');
+assert.deepEqual(abilityEngine.p.discard, ['discardMe'], 'the selected hand card should be discarded');
+assert.deepEqual(abilityEngine.p.hand, ['drawnCard'], 'one card should be drawn after the discard');
+
+abilityEngine.p.active = { cardId: 'darkCollector', hp: 100, maxHp: 100, energies: [], abilityUsed: false };
+abilityEngine.p.bench = [{ cardId: 'energySource', hp: 100, maxHp: 100, energies: ['Darkness', 'Fire'], abilityUsed: false }];
+assert.equal(resolveGenericAbility.call(abilityEngine, 'player', 'active', 0), true, 'all-own-Energy transfer Ability should resolve');
+assert.deepEqual(abilityEngine.p.active.energies, ['Darkness'], 'matching Darkness Energy should move to the Ability holder');
+assert.deepEqual(abilityEngine.p.bench[0].energies, ['Fire'], 'other Energy types must stay attached');
+
+const nightmareMethod = method('nightmareAura');
+const resolveAttachTrigger = new Function('CARD_MAP', 'getCardDisplayName', `return ({${nightmareMethod}}).nightmareAura;`)(
+  genericAbilityCardMap, card => card?.name || 'Pokémon'
+);
+const triggerEngine = {
+  p: { active: { cardId: 'sleepTrigger', hp: 100, maxHp: 100 } },
+  o: { active: { hp: 100 } },
+  applySpecialCondition(inst, status) { inst.status = status; },
+  log() {}, showDmg() {}, checkKO() { return false; }
+};
+assert.equal(resolveAttachTrigger.call(triggerEngine, 'player', triggerEngine.p.active, 'Water'), false);
+assert.equal(triggerEngine.p.active.status, 'Asleep', 'Active Energy attachment should trigger Asleep');
+triggerEngine.p.active = { cardId: 'healTrigger', hp: 50, maxHp: 100 };
+assert.equal(resolveAttachTrigger.call(triggerEngine, 'player', triggerEngine.p.active, 'Psychic'), false);
+assert.equal(triggerEngine.p.active.hp, 70, 'matching Psychic Energy should heal 20 HP');
 
 const defenseSource = method('attackDamageAfterDefenses');
 const cardMap = {
@@ -234,5 +296,9 @@ assert.match(html, /coinThenDiscardOpponentRandomHand/);
 assert.match(html, /opponentStatusesIfTails/);
 assert.match(html, /selfCannotAttackNextTurnIfTails/);
 assert.match(html, /ge\.endsTurn/);
+assert.match(html, /if\(ge\.action==='discardHandCardDrawOne'\)/);
+assert.match(html, /if\(ge\.action==='moveAllOwnEnergyToSelf'\)/);
+assert.match(html, /statusOnEnergyAttach/);
+assert.match(html, /healOnEnergyAttach/);
 assert.match(html, /if\(this\.currentSide!=='opp'\)return/);
 console.log('All generic battle-effect regression checks passed.');
