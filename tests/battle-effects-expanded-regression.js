@@ -166,4 +166,53 @@ retreatContext.p.bench=[];
 assert.equal(getEffectiveRetreatCost.call(retreatContext,'player',retreatContext.p.active),1,
   'the Ability holder itself must not count as another Beldum');
 
+
+const earlyEvolutionEffect=parseAbility.call(ctx,
+  "As long as this Pokémon is in the Active Spot, it can evolve during your first turn or the turn you play it.");
+assert.equal(earlyEvolutionEffect.passive,true,'early-evolution Ability remains passive');
+assert.equal(earlyEvolutionEffect.allowEvolutionOnOwnFirstTurn,true,'first-turn evolution permission');
+assert.equal(earlyEvolutionEffect.allowEvolutionOnTurnPlayed,true,'same-turn evolution permission');
+const canEvolveStart=html.indexOf('canEvolveInstanceNow(side,inst) {');
+const canEvolveEnd=html.indexOf('\\n      },',canEvolveStart);
+assert.ok(canEvolveStart>=0&&canEvolveEnd>canEvolveStart,'instance evolution timing helper exists');
+const timingCards={rapidEvolution:{ability:{genericEffect:earlyEvolutionEffect}},ordinary:{ability:null}};
+const canEvolveInstanceNow=new Function('CARD_MAP','return ({'+html.slice(canEvolveStart,canEvolveEnd+8)+'}).canEvolveInstanceNow;')(timingCards);
+const rapidActive={cardId:'rapidEvolution',turnPlayed:1};
+const ordinaryActive={cardId:'ordinary',turnPlayed:1};
+const timingContext={
+  turn:1,p:{active:rapidActive,bench:[]},o:{active:null,bench:[]},
+  isOwnFirstTurn(){return true;},
+  canEvolveNow(){return false;}
+};
+assert.equal(canEvolveInstanceNow.call(timingContext,'player',rapidActive),true,
+  'Active Pokémon with the Ability may evolve during its owner first turn');
+assert.equal(canEvolveInstanceNow.call(timingContext,'player',ordinaryActive),false,
+  'ordinary Pokémon still cannot evolve during its owner first turn');
+timingContext.p.active=null;
+timingContext.p.bench=[rapidActive];
+assert.equal(canEvolveInstanceNow.call(timingContext,'player',rapidActive),false,
+  'the early-evolution Ability does not work from the Bench');
+timingContext.turn=3;
+timingContext.isOwnFirstTurn=()=>false;
+timingContext.p.active={cardId:'rapidEvolution',turnPlayed:3};
+assert.equal(canEvolveInstanceNow.call(timingContext,'player',timingContext.p.active),true,
+  'Active Pokémon may evolve during the turn it is played');
+timingContext.p.active={cardId:'ordinary',turnPlayed:2};
+timingContext.canEvolveNow=()=>true;
+assert.equal(canEvolveInstanceNow.call(timingContext,'player',timingContext.p.active),true,
+  'ordinary evolution timing remains unchanged on a later turn');
+
+for (const [methodName,signature] of [
+  ['isPlayable','isPlayable(id) {'],
+  ['playHandCard','playHandCard(idx) {'],
+  ['evolveCard','evolveCard(side, hIdx, z, i, allowRareCandy = false, deferRenderAndSync = false) {'],
+  ['getRareCandyOptions','getRareCandyOptions(side) {']
+]) {
+  const start=html.indexOf(signature);
+  const end=html.indexOf('\\n      },',start);
+  assert.ok(start>=0&&end>start,methodName+' method exists');
+  assert.match(html.slice(start,end),/canEvolveInstanceNow/,
+    methodName+' must use the same per-Pokémon evolution timing rule');
+}
+
 console.log('All expanded battle-effect regression checks passed.');
