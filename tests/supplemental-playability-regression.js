@@ -1,0 +1,25 @@
+// Regression checks for safely unlocking supplemental Pokémon with supported Abilities.
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const html=fs.readFileSync('index.html','utf8');
+const start=html.indexOf('function canUnlockSupplementalPokemon(');
+const end=html.indexOf('\n    }',start);
+assert.ok(start>=0&&end>start,'supplemental playability gate exists');
+const canUnlock=new Function(html.slice(start,end+6)+';return canUnlockSupplementalPokemon;')();
+const card={dataVerified:true};
+const detail={gameplayFieldsComplete:true};
+const attacks=[{name:'Tackle',cost:['Colorless'],damage:30,unsupportedEffect:false}];
+const supportedAbility={name:'Healing Wind',text:'Once during your turn, heal 10 damage from each of your Pokémon.',genericEffect:{action:'healEachOwn',amount:10}};
+assert.equal(canUnlock(card,'Pokemon',detail,attacks,supportedAbility,'',null),true,'a complete Pokémon with a parsed Ability and supported attacks should be unlocked');
+assert.equal(canUnlock(card,'Pokemon',detail,attacks,null,'',null),true,'a complete Pokémon without an Ability should remain unlockable');
+assert.equal(canUnlock(card,'Pokemon',detail,attacks,{...supportedAbility,genericEffect:null},'',null),false,'an unsupported Ability must keep the card collection-only');
+assert.equal(canUnlock(card,'Pokemon',detail,[{...attacks[0],unsupportedEffect:true}],null,'',null),false,'an unsupported attack must keep the card collection-only');
+assert.equal(canUnlock({...card,dataVerified:false},'Pokemon',detail,attacks,null,'',null),false,'conflicting reference data must keep the card collection-only');
+assert.equal(canUnlock(card,'Pokemon',{gameplayFieldsComplete:false},attacks,null,'',null),false,'incomplete gameplay fields must keep the card collection-only');
+assert.equal(canUnlock(card,'Trainer',detail,attacks,null,'',null),false,'trainer cards require their own supported execution path');
+assert.equal(canUnlock(card,'Pokemon',detail,attacks,null,'unparsed card text',null),false,'unparsed additional card text must keep the card collection-only');
+assert.equal(canUnlock(card,'Pokemon',detail,attacks,null,'','special-subtype'),false,'unverified secondary subtypes must remain locked');
+assert.equal(canUnlock(card,'Pokemon',detail,[],null,'',null),false,'a Pokémon without a playable attack must remain locked');
+assert.match(html,/canUnlockSupplementalPokemon\(card,category,enDetail,attacks,ability,text,g\.subtype_2\)/,'loadSet must use the playability gate');
+assert.match(html,/else if\(playablePokemon && !unlockedDeckNr\.has\(gameNumber\)\)/,'only supported supplemental Pokémon may be released');
+console.log('All supplemental Pokémon playability regression checks passed.');
