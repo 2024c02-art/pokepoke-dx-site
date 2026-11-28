@@ -80,6 +80,9 @@ const abilityCases = [
   ["If you have Arceus or Arceus ex in play, this Pokémon has no Retreat Cost.", 'retreatCostZeroIfNamedPokemonInPlay', 'Arceus'],
   ["If you have Arceus or Arceus ex in play, this Pokémon takes −30 damage from attacks.", 'passiveDamageReduction', 30],
   ["If you have Arceus or Arceus ex in play, attacks used by this Pokémon cost 1 less [Colorless] Energy.", 'attackCostReduction', 1],
+  ["Once during your turn, if this Pokémon is on your Bench, you may move 30 damage that your Active Pokémon has on it to this Pokémon.", 'action', 'moveActiveDamageToSelf'],
+  ["Once during your turn, you may remove a random Special Condition from your Active Pokémon.", 'action', 'removeRandomActiveSpecialCondition'],
+  ["Once during your turn, you may choose either player. Look at the top card of that player's deck.", 'action', 'lookAtTopEitherDeck'],
   ["Once during your turn, you may take a [Psychic] Energy from your Energy Zone and attach it to this Pokémon. If you use this Ability, your turn ends.", 'endsTurn', true],
   ["Once during your turn, you may put a random Pokémon from your deck into your hand.", 'action', 'searchRandomCardInDeck'],
   ["Once during your turn, you may discard the top card of your opponent's deck.", 'action', 'discardTopOpponentDeck'],
@@ -146,7 +149,11 @@ const genericAbilityCardMap = {
   darkCollector: { name: 'Dark Collector', ability: { name: 'Dark Collection', genericEffect: { action: 'moveAllOwnEnergyToSelf', energyType: 'Darkness' } } },
   energySource: { name: 'Energy Source' },
   sleepTrigger: { name: 'Sleep Trigger', ability: { name: 'Energy Sleep', genericEffect: { statusOnEnergyAttach: 'Asleep', statusOnEnergyAttachRequiresActive: true } } },
-  healTrigger: { name: 'Heal Trigger', ability: { name: 'Psychic Heal', genericEffect: { energyType: 'Psychic', healOnEnergyAttach: 20 } } }
+  healTrigger: { name: 'Heal Trigger', ability: { name: 'Psychic Heal', genericEffect: { energyType: 'Psychic', healOnEnergyAttach: 20 } } },
+  damageTransfer: { name: 'Damage Transfer', ability: { name: 'Damage Move', genericEffect: { action: 'moveActiveDamageToSelf', amount: 30, requiresBench: true } } },
+  conditionCleaner: { name: 'Condition Cleaner', ability: { name: 'Clean', genericEffect: { action: 'removeRandomActiveSpecialCondition' } } },
+  topViewer: { name: 'Top Viewer', ability: { name: 'Top View', genericEffect: { action: 'lookAtTopEitherDeck' } } },
+  topCard: { name: 'Top Card' }
 };
 const resolveGenericAbility = new Function('CARD_MAP', 'getCardDisplayName', 'TYPE_META', 'sound', 'battleVfx', 'ui',
   `return ({${genericAbilityMethod}}).resolveGenericAbility;`)(
@@ -197,6 +204,22 @@ assert.equal(triggerEngine.p.active.status, 'Asleep', 'Active Energy attachment 
 triggerEngine.p.active = { cardId: 'healTrigger', hp: 50, maxHp: 100 };
 assert.equal(resolveAttachTrigger.call(triggerEngine, 'player', triggerEngine.p.active, 'Psychic'), false);
 assert.equal(triggerEngine.p.active.hp, 70, 'matching Psychic Energy should heal 20 HP');
+
+abilityEngine.p.active = { cardId: 'energySource', hp: 70, maxHp: 100, energies: [], abilityUsed: false };
+abilityEngine.p.bench = [{ cardId: 'damageTransfer', hp: 100, maxHp: 100, energies: [], abilityUsed: false }];
+assert.equal(resolveGenericAbility.call(abilityEngine, 'player', 'bench', 0), true, 'Bench damage-transfer Ability should resolve');
+assert.equal(abilityEngine.p.active.hp, 100, '30 damage should be removed from the Active Pokémon');
+assert.equal(abilityEngine.p.bench[0].hp, 70, 'the same 30 damage should be moved to the Ability holder');
+
+abilityEngine.p.active = { cardId: 'conditionCleaner', hp: 100, maxHp: 100, energies: [], abilityUsed: false, status: 'Asleep', statusEffects: ['Poisoned'] };
+assert.equal(resolveGenericAbility.call(abilityEngine, 'player', 'active', 0), true, 'random condition-removal Ability should resolve');
+const remainingConditions = (abilityEngine.p.active.status ? 1 : 0) + abilityEngine.p.active.statusEffects.length;
+assert.equal(remainingConditions, 1, 'exactly one Special Condition should remain after one is removed');
+
+abilityEngine.p.active = { cardId: 'topViewer', hp: 100, maxHp: 100, energies: [], abilityUsed: false };
+abilityEngine.o.deck = ['topCard'];
+assert.equal(resolveGenericAbility.call(abilityEngine, 'player', 'active', 0, 'opponent'), true, 'choosing the opponent deck should resolve');
+
 
 const defenseSource = method('attackDamageAfterDefenses');
 const cardMap = {
