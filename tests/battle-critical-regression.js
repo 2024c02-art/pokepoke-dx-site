@@ -139,4 +139,24 @@ assert.match(attackMethod, /if\(attackerIsStillActive\(\)&&ge\.selfAttackDamageR
 assert.match(attackMethod, /if\(attackerIsStillActive\(\)&&ge\.selfCannotAttackNextTurn\)/);
 assert.match(attackMethod, /if\(attackerIsStillActive\(\)&&ge\.selfCannotAttackNextTurnIfTails/);
 
+// A Knock Out-triggered counter can Knock Out the attacker as well.
+// The original Active must already be removed before the recursive KO can end the match.
+context = makeKOContext(
+  { cardId: 'attacker', hp: 0, maxHp: 100, under: [] },
+  [],
+  { cardId: 'victim', hp: 0, maxHp: 100, under: [] },
+  [{ cardId: 'backup', hp: 100, maxHp: 100, under: [] }]
+);
+cardMap.victim.ability = { genericEffect: { counterDamageOnKnockout: 30 } };
+context.p.active.hp = 20;
+context.endMatch = function(winner) { this.over = true; this.winner = winner; };
+resolveKO.call(context, 'opp', 'active', 0, false);
+assert.equal(context.o.active, null, 'the original Active must be cleared before recursive counter KO resolution');
+assert.equal(context.p.active, null, 'the attacker must also be cleared when the counter KOs it');
+assert.equal(context.o.discard.includes('victim'), true, 'the original knocked-out Active must be discarded');
+assert.equal(context.p.discard.includes('attacker'), true, 'the counter-KO attacker must be discarded');
+assert.equal(context.o.points, 1, 'the original Knock Out point must be awarded before the counter chain');
+assert.equal(context.p.points, 1, 'the counter Knock Out must award the defending side a point');
+assert.equal(context.over, true, 'the no-Bench counter Knock Out must end the match cleanly');
+
 console.log('All critical battle regression checks passed.');
