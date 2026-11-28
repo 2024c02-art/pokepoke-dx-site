@@ -7104,6 +7104,7 @@ const PACK_CATALOG_DATA = {
         if(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, it can evolve during your first turn or the turn you play it$/i.test(t))return {passive:true,allowEvolutionOnOwnFirstTurn:true,allowEvolutionOnTurnPlayed:true};
         if((m=t.match(/^If you have another ([A-Za-z][A-Za-z0-9'♀♂ .-]*) in play, this (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,retreatCostReductionIfAnotherNamedPokemonInPlay:m[1].trim(),retreatCostReduction:Number(m[2])};
         const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
+        if(/^If any damage is done to this (?:Pokémon|Pokemon) by attacks, flip a coin\. If heads, prevent that damage$/i.test(t))return {passive:true,flipCoinToPreventAttackDamage:true};
         if((m=t.match(/^Once during your turn, when you play this (?:Pokémon|Pokemon) from your hand to evolve 1 of your (?:Pokémon|Pokemon), you may take (?:a|1) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to your Active \[([A-Za-z]+)\] (?:Pokémon|Pokemon)$/i)))return {trigger:'onEvolve',action:'attachEnergyOnEvolveToActiveType',energyType:typeOf(m[1]),targetPokemonType:typeOf(m[2])};
 
         if((m=t.match(/^At the beginning of your turn, if this (?:Pokémon|Pokemon) is in the Active Spot, put a random \[([A-Za-z]+)\] (?:Pokémon|Pokemon) from your deck into your hand$/i)))return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckPokemonType:typeOf(m[1]),trigger:'turnStart',requiresActive:true};
@@ -9681,7 +9682,9 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           });
           if(hasAnother)damage-=Number(effect.passiveDamageReduction||0);
         }
-        return Math.max(0,damage);
+        damage=Math.max(0,damage);
+        if(effect?.flipCoinToPreventAttackDamage&&damage>0&&Math.random()<0.5)return 0;
+        return damage;
       },
 
       attackDamageWithActiveWeakness(inst, amount, attackerType=null, attackerIsEx=false, ignoreWeakness=false) {
