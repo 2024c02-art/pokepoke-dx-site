@@ -6962,6 +6962,8 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If your opponent's Active (?:Pokémon|Pokemon) is affected by a Special Condition, this attack does (\d+) more damage$/i))) return {bonusIfOpponentSpecialCondition:Number(m[1])};
         if((m=t.match(/^This attack does (\d+) more damage for each Special Condition affecting your opponent's Active (?:Pokémon|Pokemon)$/i))) return {bonusPerOpponentStatus:Number(m[1])};
         if(/^Flip a coin\. If heads, during your opponent's next turn, prevent all damage from—and effects of—attacks done to this (?:Pokémon|Pokemon)$/i.test(t)) return {preventAttackDamageNextTurnIfHeads:true};
+        if(/^Flip a coin\. If tails, this attack does nothing\. If heads, during your opponent's next turn, prevent all damage from—and effects of—attacks done to this (?:Pokémon|Pokemon)$/i.test(t)) return {coinCount:1,coinFailDamageZero:true,preventAttackDamageNextTurnIfHeads:true};
+        if(/^Shuffle your hand into your deck\. Draw a card for each card in your opponent's hand$/i.test(t)) return {shuffleOwnHandDrawOpponentHand:true};
         if(/^During your opponent's next turn, the Defending (?:Pokémon|Pokemon) can't retreat$/i.test(t)) return {defendingCannotRetreatNextTurn:true};
         if((m=t.match(/^During your opponent's next turn, this (?:Pokémon|Pokemon) takes [−-](\d+) damage from attacks$/i))) return {selfAttackDamageReductionNextTurn:Number(m[1])};
         if(/^During your next turn, this (?:Pokémon|Pokemon) can't attack$/i.test(t)) return {selfCannotAttackNextTurn:true};
@@ -7099,6 +7101,8 @@ const PACK_CATALOG_DATA = {
       parseGenericAbility(text) {
         const t=String(text||'').replace(/\u00a0/g,' ').trim().replace(/[.!。]$/,'');if(!t)return null;
         let m;const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
+
+        if((m=t.match(/^At the beginning of your turn, (?:if this (?:Pokémon|Pokemon) is in the Active Spot, )?put a random \[([A-Za-z]+)\] (?:Pokémon|Pokemon) from your deck into your hand$/i)))return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckPokemonType:typeOf(m[1]),trigger:'turnStart',requiresActive:/if this .*Active Spot/i.test(t),repeatable:true};
         const deckSearchText=t.replace(/^Once during your turn, you may\s+/i,'');
         const deckSearchMatch=deckSearchText.match(/^Put (?:a|1) random (.+?) from your deck (into your hand|onto your Bench)$/i);
         if(deckSearchMatch){
@@ -9017,6 +9021,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           s.currentEnergy = s.nextEnergy;
           s.nextEnergy = this.pickRandomEnergy(s.energyTypes);
         }
+        const activeAbilityEffect=s.active&&CARD_MAP[s.active.cardId]?.ability?.genericEffect;
+        if(activeAbilityEffect?.trigger==='turnStart'&&activeAbilityEffect.action&&!s.active.abilityUsed){
+          this.resolveGenericAbility(side,'active',0);
+        }
 
         if (side === 'player') {
           if (isVeryFirstTurn) this.log('あなたの先攻1ターン目！（先攻1ターン目はエネルギー発生＆ワザ不可）');
@@ -10388,6 +10396,18 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(ge.discardTopDeck&&s.deck.length){s.discard.push(s.deck.shift());this.log('山札の一番上のカードをトラッシュ！');}
         if(ge.discardTopOpponentDeck&&opp.deck.length){opp.discard.push(opp.deck.shift());this.log('相手の山札の一番上のカードをトラッシュ！');}
         if(ge.drawCards){const before=s.hand.length;this.drawCards(side,Number(ge.drawCards));const drawn=s.hand.length-before;this.log(`${getCardDisplayName(attC)}のワザ効果：山札を${drawn}枚引いた！`);}
+        if(ge.shuffleOwnHandDrawOpponentHand){
+          const drawCount=opp.hand.length;
+          const returnedCount=s.hand.length;
+          if(returnedCount){
+            s.deck.push(...s.hand);
+            s.hand.length=0;
+            s.deck=this.shuffle(s.deck);
+          }
+          const before=s.hand.length;
+          this.drawCards(side,drawCount);
+          this.log(getCardDisplayName(attC)+'のワザ効果：手札'+returnedCount+'枚を山札に戻してシャッフルし、相手の手札'+drawCount+'枚分引いた（'+(s.hand.length-before)+'枚）。');
+        }
         if(ge.searchDeckTarget)this.resolveRandomDeckSearch(side,ge,'ワザの効果');
         const selfDamageAmount=atk.fx==='selfdmg30'?30:Number(ge.selfDamage||0)||((ge.selfDamageOnTails&&coinHeads===0)?Number(ge.selfDamageOnTails):0);
         const selfDamageAttack = selfDamageAmount>0;
