@@ -125,4 +125,18 @@ assert.match(
 );
 assert.match(html, /isBench = z === 'bench'/, 'KO zone must be derived from the actual target zone');
 
+// When a reactive Ability KOs the attacker, later self-effects must not mutate
+// the replacement Pokémon or dereference a cleared Active slot.
+const attackMethodStart = html.indexOf('\n      attack(side, atkIdx');
+const attackMethodEnd = html.indexOf('\n      },\n\n    ', attackMethodStart);
+assert.ok(attackMethodStart >= 0 && attackMethodEnd > attackMethodStart, 'attack method exists');
+const attackMethod = html.slice(attackMethodStart, attackMethodEnd + 8);
+assert.match(attackMethod, /const attackerIsStillActive = \(\) => s\.active === attackingInst;/);
+assert.match(attackMethod, /if\(attackerIsStillActive\(\)&&ge\.selfHealEqualDamageDone&&dmg>0\)/);
+assert.match(attackMethod, /if\(attackerIsStillActive\(\)&&ge\.selfStatuses\)/);
+assert.match(attackMethod, /if\(attackerIsStillActive\(\)&&ge\.preventAttackDamageNextTurnIfHeads/);
+assert.match(attackMethod, /if\(attackerIsStillActive\(\)&&ge\.selfAttackDamageReductionNextTurn/);
+assert.match(attackMethod, /if\(attackerIsStillActive\(\)&&ge\.selfCannotAttackNextTurn\)/);
+assert.match(attackMethod, /if\(attackerIsStillActive\(\)&&ge\.selfCannotAttackNextTurnIfTails/);
+
 console.log('All critical battle regression checks passed.');
