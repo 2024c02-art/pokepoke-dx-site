@@ -60,6 +60,8 @@ const attackCases = [
   ["This attack does 30 damage for each of your Benched [Lightning] Pokémon.", 'benchPokemonType', 'Lightning'],
   ["If this Pokémon has at least 2 extra [Water] Energy attached, this attack does 60 more damage.", 'minExtraEnergy', 2],
   ["If your opponent's Active Pokémon is a [Fighting] Pokémon, this attack does 30 more damage.", 'bonusIfOpponentType', 'Fighting'],
+  ["If your opponent's Active Pokémon is a Basic Pokémon, this attack does 60 more damage.", 'bonusIfOpponentIsBasic', 60],
+  ["This attack does 50 more damage for each Special Condition affecting your opponent's Active Pokémon.", 'bonusPerOpponentStatus', 50],
   ["Discard all [Water] Energy from this Pokémon. This attack also does 20 damage to 1 of your opponent's Benched Pokémon.", 'benchDamage', 20]
 ];
 for (const [text, key, expected] of attackCases) {
@@ -67,6 +69,31 @@ for (const [text, key, expected] of attackCases) {
   assert.ok(parsed, 'attack effect was not parsed: ' + text);
   assert.equal(parsed[key], expected, 'incorrect attack effect: ' + text);
 }
+const calcDamage = new Function('CARD_MAP', `return ({${method('calcDamagePreview')}}).calcDamagePreview;`)( {
+  attacker: { type: 'Fire', isEx: false, attacks: [] },
+  basic: { type: 'Water', stage: 'Basic', weakness: 'None', retreat: 1, isEx: false },
+  evolved: { type: 'Water', stage: 'Stage1', weakness: 'None', retreat: 1, isEx: false }
+});
+const damageAttacker = { cardId: 'attacker', hp: 100, maxHp: 100, energies: [], turnPlayed: 1 };
+function calcContext(defender) {
+  return {
+    p: { active: damageAttacker, bench: [], dmgBonus: 0, discard: [], points: 0 },
+    o: { active: defender, bench: [], discard: [], points: 0 },
+    turn: 1, hasPokemonNamed: () => false, energyEffectType: value => value,
+    attackDamageAfterDefenses: (_inst, amount) => amount, isAttackProtected: () => false
+  };
+}
+const basicDamage = calcDamage.call(calcContext({cardId:'basic',hp:100,maxHp:100,energies:[]}), damageAttacker,
+  {damage:40,genericEffect:{bonusIfOpponentIsBasic:60}}, {cardId:'basic',hp:100,maxHp:100,energies:[]}, 'player');
+assert.equal(basicDamage.final,100,'Active Basic wording must apply its conditional bonus');
+const evolvedDamage = calcDamage.call(calcContext({cardId:'evolved',hp:100,maxHp:100,energies:[]}), damageAttacker,
+  {damage:40,genericEffect:{bonusIfOpponentIsBasic:60}}, {cardId:'evolved',hp:100,maxHp:100,energies:[]}, 'player');
+assert.equal(evolvedDamage.final,40,'conditional Basic bonus must not apply to evolved defenders');
+const statusDefender = {cardId:'basic',hp:100,maxHp:100,energies:[],statusEffects:['Poisoned','Burned']};
+const statusDamage = calcDamage.call(calcContext(statusDefender), damageAttacker,
+  {damage:40,genericEffect:{bonusPerOpponentStatus:50}}, statusDefender, 'player');
+assert.equal(statusDamage.final,140,'a per-Special-Condition damage bonus must count each active condition');
+
 const mixedStatusEffect = parseAttack.call(parserContext, "Flip a coin. If heads, your opponent's Active Pokémon is now Paralyzed. If tails, your opponent's Active Pokémon is now Confused.");
 assert.deepEqual(mixedStatusEffect?.opponentStatusesIfTails, ['Confused'], 'tails status should be parsed separately');
 
