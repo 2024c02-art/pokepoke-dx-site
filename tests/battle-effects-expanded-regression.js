@@ -173,7 +173,7 @@ assert.equal(earlyEvolutionEffect.passive,true,'early-evolution Ability remains 
 assert.equal(earlyEvolutionEffect.allowEvolutionOnOwnFirstTurn,true,'first-turn evolution permission');
 assert.equal(earlyEvolutionEffect.allowEvolutionOnTurnPlayed,true,'same-turn evolution permission');
 const canEvolveStart=html.indexOf('canEvolveInstanceNow(side,inst) {');
-const canEvolveEnd=html.indexOf('\\n      },',canEvolveStart);
+const canEvolveEnd=html.indexOf('\n      },',canEvolveStart);
 assert.ok(canEvolveStart>=0&&canEvolveEnd>canEvolveStart,'instance evolution timing helper exists');
 const timingCards={rapidEvolution:{ability:{genericEffect:earlyEvolutionEffect}},ordinary:{ability:null}};
 const canEvolveInstanceNow=new Function('CARD_MAP','return ({'+html.slice(canEvolveStart,canEvolveEnd+8)+'}).canEvolveInstanceNow;')(timingCards);
@@ -209,7 +209,7 @@ for (const [methodName,signature] of [
   ['getRareCandyOptions','getRareCandyOptions(side) {']
 ]) {
   const start=html.indexOf(signature);
-  const end=html.indexOf('\\n      },',start);
+  const end=html.indexOf('\n      },',start);
   assert.ok(start>=0&&end>start,methodName+' method exists');
   assert.match(html.slice(start,end),/canEvolveInstanceNow/,
     methodName+' must use the same per-Pokémon evolution timing rule');
