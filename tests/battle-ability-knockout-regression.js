@@ -24,6 +24,13 @@ const cardMap = {
     pointValue: 1,
     ability: { name: 'Target Strike', genericEffect: { action: 'damageOpponentOne', amount: 30 } }
   },
+  abilityRequiresArceus: {
+    name: 'Conditional Ability',
+    pointValue: 1,
+    ability: { name: 'Arceus Pulse', genericEffect: { action: 'damageOpponentActive', amount: 30, requiresOwnPokemonNamed: 'Arceus' } }
+  },
+  arceus: { name: 'Arceus', pointValue: 1 },
+  arceusEx: { name: 'Arceus ex', pointValue: 2 },
   abilitySelf: {
     name: 'Self Damage Ability',
     pointValue: 1,
@@ -47,6 +54,10 @@ const resolveAbility = new Function(
   { triggerBurst() {} },
   { Fire: { code: '炎', c1: '#f97316' } }
 );
+const hasPokemonNamed = new Function(
+  'CARD_MAP',
+  'return ({' + method('hasPokemonNamed', 'hasPokemonNamed(side,name,excludeInst=null) {') + '}).hasPokemonNamed;'
+)(cardMap);
 const checkKO = new Function(
   'CARD_MAP', 'getCardDisplayName',
   'return ({' + method('checkKO') + '}).checkKO;'
@@ -145,5 +156,20 @@ assert.equal(context.p.active.cardId, 'playerBackup', 'Bench self-KO must preser
 assert.deepEqual(context.p.bench.map(item => item.cardId), ['cpuBackup'], 'Bench self-KO must remove only its source');
 assert.equal(context.o.points, 1);
 assert.equal(context.p.discard.includes('abilitySelf'), true);
+
+// 6. Conditional Active-damage Abilities must check for Arceus or Arceus ex in play.
+let conditionalTarget=pokemon('victim',100);
+context=makeContext(pokemon('abilityRequiresArceus'),[],conditionalTarget,[]);
+context.hasPokemonNamed=(side,name)=>hasPokemonNamed.call(context,side,name);
+assert.equal(resolveAbility.call(context,'player','active',0),false,
+  'conditional Ability must not be usable without Arceus');
+assert.equal(conditionalTarget.hp,100,'failed prerequisite must not deal damage');
+
+conditionalTarget=pokemon('victim',100);
+context=makeContext(pokemon('abilityRequiresArceus'),[pokemon('arceusEx')],conditionalTarget,[]);
+context.hasPokemonNamed=(side,name)=>hasPokemonNamed.call(context,side,name);
+assert.equal(resolveAbility.call(context,'player','active',0),true,
+  'Arceus ex also satisfies the Arceus prerequisite');
+assert.equal(conditionalTarget.hp,70,'conditional Ability deals its printed damage when enabled');
 
 console.log('All Ability damage and self-Knock Out runtime regression checks passed.');
