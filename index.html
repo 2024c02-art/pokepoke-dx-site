@@ -6763,8 +6763,8 @@ const PACK_CATALOG_DATA = {
       const effectTargetZone=(value,language)=>{
         const text=normalText(value);
         if(language==='en'){
-          if(/\\b(?:Benched Pokémon|Benched Pokemon|Pokémon on (?:your|the opponent's) Bench|Pokemon on (?:your|the opponent's) Bench)\\b/i.test(text))return 'bench';
-          if(/\\b(?:Active Pokémon|Active Pokemon|Defending Pokémon|Defending Pokemon|Pokémon in the Active Spot|Pokemon in the Active Spot)\\b/i.test(text))return 'active';
+          if(/\b(?:Benched Pokémon|Benched Pokemon|Pokémon on (?:your|the opponent's) Bench|Pokemon on (?:your|the opponent's) Bench)\b/i.test(text))return 'bench';
+          if(/\b(?:Active Pokémon|Active Pokemon|Defending Pokémon|Defending Pokemon|Pokémon in the Active Spot|Pokemon in the Active Spot)\b/i.test(text))return 'active';
           return null;
         }
         if(/(?:相手|自分)のベンチ(?:にいる)?(?:ポケモン)?|ベンチの(?:相手の|自分の)?ポケモン|ベンチポケモン/.test(text))return 'bench';
