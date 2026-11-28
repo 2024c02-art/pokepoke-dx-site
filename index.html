@@ -7067,6 +7067,9 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^Once during your turn, you may move all \[([A-Za-z]+)\] Energy from each of your (?:Pokémon|Pokemon) to this (?:Pokémon|Pokemon)$/i)))return {action:'moveAllOwnEnergyToSelf',energyType:typeOf(m[1])};
         if(/^As long as this (?:Pokémon|Pokemon) is in the Active Spot, whenever you attach an Energy from your Energy Zone to it, it is now Asleep$/i.test(t))return {passive:true,statusOnEnergyAttach:'Asleep',statusOnEnergyAttachRequiresActive:true};
         if((m=t.match(/^Whenever you attach a \[([A-Za-z]+)\] Energy from your Energy Zone to this (?:Pokémon|Pokemon), heal (\d+) damage from this (?:Pokémon|Pokemon)$/i)))return {passive:true,energyType:typeOf(m[1]),healOnEnergyAttach:Number(m[2])};
+        if((m=t.match(/^Once during your turn, if this (?:Pokémon|Pokemon) is on your Bench, you may move (\d+) damage that your Active (?:Pokémon|Pokemon) has on it to this (?:Pokémon|Pokemon)$/i)))return {action:'moveActiveDamageToSelf',amount:Number(m[1]),requiresBench:true};
+        if(/^Once during your turn, you may remove a random Special Condition from your Active (?:Pokémon|Pokemon)$/i.test(t))return {action:'removeRandomActiveSpecialCondition'};
+        if(/^Once during your turn, you may choose either player\. Look at the top card of that player's deck$/i.test(t))return {action:'lookAtTopEitherDeck'};
         if((m=t.match(/^Once during your turn, you may heal (\d+) damage from each of your(?: \[([A-Za-z]+)\])? (?:Pokémon|Pokemon)$/i)))return {action:'healEachOwn',amount:Number(m[1]),targetPokemonType:typeOf(m[2])};
         if((m=t.match(/^Once during your turn, you may heal (\d+) damage from your Active (?:Pokémon|Pokemon)$/i)))return {action:'healActive',amount:Number(m[1])};
         if((m=t.match(/^Once during your turn, (?:if this (?:Pokémon|Pokemon) is in the Active Spot, )?you may heal (\d+) damage from 1 of your (?:Pokémon|Pokemon)$/i)))return {action:'healOwnOne',amount:Number(m[1])};
@@ -9637,6 +9640,20 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(ge.requiresActive&&z!=='active'){if(side==='player')ui.toast('この特性はバトル場にいるときだけ使えます');return false;}
         if(ge.requiresBench&&z!=='bench'){if(side==='player')ui.toast('この特性はベンチにいるときだけ使えます');return false;}
         const own=[...(board.active?[{z:'active',i:0,inst:board.active}]:[]),...board.bench.map((p,index)=>({z:'bench',i:index,inst:p}))],enemy=[...(opp.active?[{z:'active',i:0,inst:opp.active}]:[]),...opp.bench.map((p,index)=>({z:'bench',i:index,inst:p}))];
+        if(ge.action==='moveActiveDamageToSelf'){
+          if(!board.active||board.active.hp>=board.active.maxHp){if(side==='player')ui.toast('バトルポケモンに移動できるダメージがありません');return false;}
+        }
+        if(ge.action==='removeRandomActiveSpecialCondition'){
+          const active=board.active;
+          const hasCondition=!!(active&&(active.status||active.statusEffects?.length));
+          if(!hasCondition){if(side==='player')ui.toast('バトルポケモンに特殊状態がありません');return false;}
+        }
+        if(ge.action==='lookAtTopEitherDeck'){
+          if(targetZone===null&&side==='player'){
+            const html=`<div class="p-3 rounded-2xl border cursor-pointer hover:bg-sky-50" onclick="battle.resolveGenericAbility('player','${z}',${i},'own');ui.closeSelectModal();">自分の山札を見る</div><div class="p-3 rounded-2xl border cursor-pointer hover:bg-sky-50" onclick="battle.resolveGenericAbility('player','${z}',${i},'opponent');ui.closeSelectModal();">相手の山札を見る</div>`;
+            ui.openSelectModal('どちらの山札を見る？',html);return false;
+          }
+        }
         let candidates=[];
         if(ge.action==='healOwnOne')candidates=own.filter(x=>x.inst.hp<x.inst.maxHp);
         if(ge.action==='moveDamageToSelf')candidates=own.filter(x=>x.inst!==inst&&x.inst.hp<x.inst.maxHp);
@@ -9683,6 +9700,31 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           board.active.hp=Math.min(board.active.maxHp,board.active.hp+Number(ge.amount));this.log(`${ability.name}！バトルポケモンのHPを${Number(ge.amount)}回復！`);
         }else if(ge.action==='healOwnOne'&&chosen){chosen.inst.hp=Math.min(chosen.inst.maxHp,chosen.inst.hp+Number(ge.amount));this.log(`${ability.name}！${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}のHPを${Number(ge.amount)}回復！`);}
         else if(ge.action==='damageOpponentOne'&&chosen){chosen.inst.hp-=Number(ge.amount);this.log(`${ability.name}！相手の${getCardDisplayName(CARD_MAP[chosen.inst.cardId])}に${Number(ge.amount)}ダメージ！`);if(chosen.inst.hp<=0)this.checkKO(side==='player'?'opp':'player',chosen.z,chosen.i,true);}
+        else if(ge.action==='moveActiveDamageToSelf'){
+          const amount=Math.min(Math.max(0,Number(ge.amount)||0),Math.max(0,board.active.maxHp-board.active.hp));
+          if(amount<=0)return false;
+          board.active.hp+=amount;inst.hp-=amount;
+          this.log(`${ability.name}！バトルポケモンから${amount}ダメージを移動した！`);
+          if(inst.hp<=0)this.checkKO(side,'bench',i,true);
+        }
+        else if(ge.action==='removeRandomActiveSpecialCondition'){
+          const active=board.active;
+          const conditions=[...(active?.statusEffects||[]),...(active?.status?[active.status]:[])];
+          const uniqueConditions=[...new Set(conditions)];
+          if(!active||!uniqueConditions.length)return false;
+          const selected=uniqueConditions[Math.floor(Math.random()*uniqueConditions.length)];
+          if(active.status===selected){active.status=null;active.statusUntilTurn=0;}
+          active.statusEffects=(active.statusEffects||[]).filter(x=>x!==selected);
+          const labels={Poisoned:'どく',Burned:'やけど',Asleep:'ねむり',Paralyzed:'マヒ',Confused:'こんらん'};
+          this.log(`${ability.name}！バトルポケモンの${labels[selected]||selected}を回復！`);
+        }
+        else if(ge.action==='lookAtTopEitherDeck'){
+          const targetBoard=targetZone==='opponent'?opp:board;
+          if(!targetBoard.deck?.length){if(side==='player')ui.toast('選択したプレイヤーの山札にカードがありません');return false;}
+          const topCard=CARD_MAP[targetBoard.deck[0]];
+          this.log(`${ability.name}！${targetZone==='opponent'?'相手':'自分'}の山札の一番上は「${getCardDisplayName(topCard)}」！`);
+          if(side==='player')ui.toast(`${targetZone==='opponent'?'相手':'自分'}の山札の一番上：${getCardDisplayName(topCard)}`);
+        }
         else if(ge.action==='discardHandCardDrawOne'){
           const selectedIndex=handCardIndex===null?Math.floor(Math.random()*board.hand.length):Number(handCardIndex);
           const discarded=board.hand.splice(selectedIndex,1)[0];
