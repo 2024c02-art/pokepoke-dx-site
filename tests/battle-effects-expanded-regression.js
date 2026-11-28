@@ -271,4 +271,39 @@ assert.equal(benchWater.cardId,'waterEvolved');
 assert.deepEqual(activeWater.energies,[],'non-Fire Active Pokémon does not receive Fire Energy');
 assert.equal(evolveContext.nightmareAuraCalls.length,0,'mismatched target type does not trigger Energy attachment');
 
+
+const coinShieldEffect=parseAbility.call(ctx,
+  "If any damage is done to this Pokémon by attacks, flip a coin. If heads, prevent that damage.");
+assert.equal(coinShieldEffect.passive,true,'coin shield Ability is passive');
+assert.equal(coinShieldEffect.flipCoinToPreventAttackDamage,true,'coin shield Ability flag');
+const shieldCards={coinShield:{ability:{genericEffect:coinShieldEffect}}};
+const shieldStart=html.indexOf('attackDamageAfterDefenses(inst, amount');
+const shieldEnd=html.indexOf('\n      },',shieldStart);
+assert.ok(shieldStart>=0&&shieldEnd>shieldStart,'attack damage defense method exists');
+const attackDamageAfterDefenses=new Function('CARD_MAP',
+  'return ({'+html.slice(shieldStart,shieldEnd+8)+'}).attackDamageAfterDefenses;')(shieldCards);
+const shieldTarget={cardId:'coinShield',attackDamageReductionUntilTurn:0};
+const shieldContext={
+  turn:3,p:{active:null,bench:[shieldTarget]},o:{active:null,bench:[]},
+  isAttackProtected(){return false;},hasPokemonNamed(){return false;}
+};
+const originalRandom=Math.random;
+let coinCalls=0;
+try{
+  Math.random=()=>{coinCalls++;return 0.1;};
+  assert.equal(attackDamageAfterDefenses.call(shieldContext,shieldTarget,50,'Fire',false),0,
+    'heads prevents incoming attack damage');
+  assert.equal(coinCalls,1,'positive attack damage flips one coin');
+  Math.random=()=>{coinCalls++;return 0.9;};
+  assert.equal(attackDamageAfterDefenses.call(shieldContext,shieldTarget,50,'Fire',false),50,
+    'tails allows incoming attack damage');
+  assert.equal(coinCalls,2,'each separate attack damage event flips again');
+  Math.random=()=>{coinCalls++;return 0.1;};
+  assert.equal(attackDamageAfterDefenses.call(shieldContext,shieldTarget,0,'Fire',false),0,
+    'zero damage does not trigger the coin Ability');
+  assert.equal(coinCalls,2,'zero damage does not flip a coin');
+} finally {
+  Math.random=originalRandom;
+}
+
 console.log('All expanded battle-effect regression checks passed.');
