@@ -34,6 +34,13 @@ parserContext.parseGenericEffect = parseAttack;
 
 const attackCases = [
   ["Flip a coin. If heads, the Defending Pokémon can't attack during your opponent's next turn.", 'defendingCannotAttackNextTurnIfHeads', true],
+  ["Put 1 random [Grass] Pokémon from your deck into your hand.", 'searchDeckPokemonType', 'Grass'],
+  ["Put 1 random Basic Pokémon from your deck onto your Bench.", 'searchDeckStage', 'Basic'],
+  ["Discard a random card from your opponent's hand.", 'discardOpponentRandomHand', 1],
+  ["Flip a coin. If heads, discard a random card from your opponent's hand.", 'coinThenDiscardOpponentRandomHand', true],
+  ["Your opponent reveals a random card from their hand and shuffles it into their deck.", 'shuffleOpponentRandomHand', 1],
+  ["1 of your opponent's Pokémon is chosen at random. Do 30 damage to it.", 'randomOpponentPokemonDamage', 30],
+  ["Flip a coin. If tails, during your next turn, this Pokémon can't attack.", 'selfCannotAttackNextTurnIfTails', true],
   ["Take a [Water] Energy from your Energy Zone and attach it to 1 of your Benched [Water] Pokémon.", 'attachEnergyType', 'Water'],
   ["Take a [Water] Energy from your Energy Zone and attach it to 1 of your Benched [Water] Pokémon.", 'attachEnergyTarget', 'bench'],
   ["Take a [Fire] Energy from your Energy Zone and attach it to this Pokémon.", 'attachEnergyTarget', 'self'],
@@ -52,9 +59,14 @@ for (const [text, key, expected] of attackCases) {
   assert.ok(parsed, 'attack effect was not parsed: ' + text);
   assert.equal(parsed[key], expected, 'incorrect attack effect: ' + text);
 }
+const mixedStatusEffect = parseAttack.call(parserContext, "Flip a coin. If heads, your opponent's Active Pokémon is now Paralyzed. If tails, your opponent's Active Pokémon is now Confused.");
+assert.deepEqual(mixedStatusEffect?.opponentStatusesIfTails, ['Confused'], 'tails status should be parsed separately');
 
 const abilityCases = [
   ["Once during your turn, you may heal 20 damage from each of your Pokémon.", 'action', 'healEachOwn'],
+  ["Once during your turn, you may take a [Psychic] Energy from your Energy Zone and attach it to this Pokémon. If you use this Ability, your turn ends.", 'endsTurn', true],
+  ["Once during your turn, you may put a random Pokémon from your deck into your hand.", 'action', 'searchRandomCardInDeck'],
+  ["Once during your turn, you may discard the top card of your opponent's deck.", 'action', 'discardTopOpponentDeck'],
   ["Once during your turn, you may heal 30 damage from each of your [Water] Pokémon.", 'targetPokemonType', 'Water'],
   ["Once during your turn, you may do 20 damage to 1 of your opponent's Pokémon.", 'action', 'damageOpponentOne'],
   ["Once during your turn, you may do 20 damage to your opponent's Active Pokémon.", 'action', 'damageOpponentActive'],
@@ -86,6 +98,31 @@ for (const [text, key, expected] of abilityCases) {
   assert.ok(parsed, 'Ability effect was not parsed: ' + text);
   assert.equal(parsed[key], expected, 'incorrect Ability effect: ' + text);
 }
+
+const deckSearchMethod = method('resolveRandomDeckSearch');
+const deckSearchCardMap = {
+  grassBasic: { name: 'Bulbasaur', sourceNameEN: 'Bulbasaur', category: 'Pokemon', type: 'Grass', stage: 'Basic', hp: 70 },
+  fireBasic: { name: 'Charmander', sourceNameEN: 'Charmander', category: 'Pokemon', type: 'Fire', stage: 'Basic', hp: 60 },
+  grassStage1: { name: 'Ivysaur', sourceNameEN: 'Ivysaur', category: 'Pokemon', type: 'Grass', stage: 'Stage1', hp: 90 }
+};
+const resolveRandomDeckSearch = new Function('CARD_MAP', 'getCardDisplayName', `return ({${deckSearchMethod}}).resolveRandomDeckSearch;`)(
+  deckSearchCardMap,
+  card => card?.name || 'Card'
+);
+const deckSearchBoard = { deck: ['fireBasic', 'grassStage1', 'grassBasic'], hand: [], bench: [] };
+const deckSearchContext = {
+  p: deckSearchBoard, o: {}, turn: 4,
+  shuffle: cards => cards,
+  createInst: cardId => ({ cardId }),
+  log() {},
+  ui: { toast() {} }
+};
+assert.equal(resolveRandomDeckSearch.call(deckSearchContext, 'player', {
+  searchDeckTarget: 'bench', searchDeckCategory: 'Pokemon', searchDeckPokemonType: 'Grass', searchDeckStage: 'Basic'
+}, 'Test Search'), true, 'eligible random Basic Pokémon search should resolve');
+assert.equal(deckSearchBoard.bench.length, 1, 'the searched Pokémon should enter the Bench');
+assert.equal(deckSearchBoard.bench[0].cardId, 'grassBasic', 'search should respect both type and Stage filters');
+assert.deepEqual(deckSearchBoard.deck, ['fireBasic', 'grassStage1'], 'the selected Pokémon should be removed from the deck');
 
 const defenseSource = method('attackDamageAfterDefenses');
 const cardMap = {
@@ -179,4 +216,11 @@ assert.match(html, /preventSpecialConditions/, 'special-condition immunity is no
 assert.match(html, /damageOpponentOnEnergyAttach/, 'Energy-attachment ability trigger is not resolved');
 assert.match(html, /this\.nightmareAura\(side,target,energyType\)/, 'attack Energy attachments do not trigger attachment abilities');
 
+
+assert.match(html, /if\(ge\.searchDeckTarget\)this\.resolveRandomDeckSearch/);
+assert.match(html, /coinThenDiscardOpponentRandomHand/);
+assert.match(html, /opponentStatusesIfTails/);
+assert.match(html, /selfCannotAttackNextTurnIfTails/);
+assert.match(html, /ge\.endsTurn/);
+assert.match(html, /if\(this\.currentSide!=='opp'\)return/);
 console.log('All generic battle-effect regression checks passed.');
