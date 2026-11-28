@@ -26,6 +26,7 @@ const cases=[
   ["If you played a Supporter card from your hand during this turn, this attack does 50 more damage.",'bonusIfSupporterPlayedThisTurn',50],
   ["If the Defending Pokémon is a Basic Pokémon, this attack does 30 more damage.",'bonusIfOpponentIsBasic',30],
   ["If your opponent's Active Pokémon has a Pokémon Tool attached, this attack does 30 more damage.",'bonusIfOpponentHasTool',30],
+  ["Discard a card from your hand. If you can't, this attack does nothing.",'discardHandCardOrFail',true],
   ["This attack does 40 damage for each Pokémon Tool attached to all of your Pokémon",'damagePerPokemonToolAttached',40],
   ["If 1 of your Pokémon used Sweets Relay during your last turn, this attack does 20 more damage.",'bonusIfSweetsRelayLastTurn',20],
   ["This attack does 40 damage for each time your Pokémon used Sweets Relay during this game.",'bonusPerSweetsRelayUsedThisGame',40],
@@ -130,6 +131,10 @@ assert.match(html,/s\.active=s\.bench\[choice\.bench\];\s*s\.active\.movedToActi
 assert.match(html,/def\.active = def\.bench\.shift\(\);\s*def\.active\.movedToActiveTurn = this\.turn/,'automatic KO promotion records the turn');
 assert.match(html,/this\.o\.active=this\.o\.bench\.shift\(\);this\.o\.active\.movedToActiveTurn=this\.turn/,'CPU batch promotion records the turn');
 assert.match(html,/ge\.requiresSelfHasTool&&!inst\.tool/,'Tool-dependent Abilities validate their attached Tool');
+assert.match(html,/resolveDiscardHandAttackChoice\(handCardIndex\)/,'the hand-discard attack choice has a dedicated resolver');
+assert.match(html,/ge\.discardHandCardOrFail/,'hand-discard attacks are resolved before damage');
+assert.match(html,/attackStatusResolved/,'resuming an attack selection must not repeat confusion checks');
+assert.match(html,/pending\.choice \|\| null/,'copied attacks preserve pre-attack resolution state');
 assert.match(html,/attackDamagePenaltyUntilTurn/);
 assert.match(html,/opponentTrainerLockNextTurn/);
 assert.match(html,/attackFailureOnTailsUntilTurn/);
