@@ -53,7 +53,8 @@ const koContext={
   over:false,resolvingAttackSide:'player',turn:4,pendingSelfKO:false,isOnlineP2P:false,
   p:{active:{cardId:'attacker',hp:20,maxHp:100,under:[]},bench:[{cardId:'backup',hp:50,maxHp:50,under:[]}],discard:[],points:0,name:'Player'},
   o:{active:{cardId:'retaliator',hp:0,maxHp:100,under:[]},bench:[{cardId:'backup',hp:50,maxHp:50,under:[]}],discard:[],points:0,name:'CPU'},
-  log(){},render(){},openPromotionSelector(){},endMatch(){this.over=true;}
+  log(){},render(){},openPromotionSelector(){},endMatch(){this.over=true;},
+  checkKO(defSide,z,i,isBench=false){return checkKO.call(this,defSide,z,i,isBench);}
 };
 checkKO.call(koContext,'opp','active',0,false);
 assert.equal(koContext.p.points,1,'KO counter damage should award the defender a point for knocking out the attacker');
