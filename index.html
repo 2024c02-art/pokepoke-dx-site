@@ -720,7 +720,7 @@
         </button>
         <button onclick="app.switchScreen('pack')" class="pocket-glass hover:bg-white p-4 sm:p-5 rounded-3xl text-left transition transform hover:-translate-y-1">
           <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-400 to-blue-600 text-white flex items-center justify-center font-black text-xs mb-2.5 shadow">30弾</div>
-          <h3 class="font-black text-sm text-slate-800">拡張パック (全30弾)</h3>
+          <h3 class="font-black text-sm text-slate-800">拡張パック (全31種類)</h3>
           <p class="text-[11px] text-slate-500 mt-1">A/B/Cシリーズ公式パック＆10連一括開封！</p>
         </button>
         <button onclick="accountMgr.openModal()" class="pocket-glass hover:bg-white p-4 sm:p-5 rounded-3xl text-left transition transform hover:-translate-y-1">
@@ -849,12 +849,12 @@
       <div class="text-center space-y-1">
         <span class="px-3 py-0.5 rounded-full bg-sky-100 text-sky-700 text-[11px] font-black">POKÉMON TCG POCKET • ALL 31 PACKS • V17 JAPANESE DATA CROSS-REFERENCE</span>
         <h2 class="text-2xl sm:text-3xl font-black text-slate-900">ポケポケ公式拡張パック（全31種類）</h2>
-        <p class="text-xs text-slate-500 font-bold">1パック5枚入り / 10連開封（50枚一括・SR以上1枚確定 / 開封1パックにつきポイント1）</p>
+        <p class="text-xs text-slate-500 font-bold">1パック5枚入り（ハイクラスパックは4枚） / 10連は単発10回と同じ抽選 / 開封1パックにつきポイント5</p>
         <p class="text-[10px] text-slate-500 font-bold">v24：全31パックの収録カード名を日本語表記に統一。カード画像は日本語版を優先表示し、取得できない場合は内蔵画像に日本語名を添えて表示します。全カード能力データの統合は引き続き未完了です。</p>
       </div>
 
       <div class="flex flex-wrap justify-center gap-2">
-        <button onclick="packSystem.setSeriesFilter('ALL')" class="pack-tab px-4 py-1.5 rounded-full bg-sky-600 text-white text-xs font-black" data-series="ALL">すべて (30)</button>
+        <button onclick="packSystem.setSeriesFilter('ALL')" class="pack-tab px-4 py-1.5 rounded-full bg-sky-600 text-white text-xs font-black" data-series="ALL">すべて (31)</button>
         <button onclick="packSystem.setSeriesFilter('A')" class="pack-tab px-4 py-1.5 rounded-full bg-white text-slate-700 border border-slate-200 text-xs font-bold" data-series="A">Aシリーズ (16)</button>
         <button onclick="packSystem.setSeriesFilter('B')" class="pack-tab px-4 py-1.5 rounded-full bg-white text-slate-700 border border-slate-200 text-xs font-bold" data-series="B">Bシリーズ (12)</button>
         <button onclick="packSystem.setSeriesFilter('C')" class="pack-tab px-4 py-1.5 rounded-full bg-white text-slate-700 border border-slate-200 text-xs font-bold" data-series="C">Cシリーズ (2)</button>
@@ -1665,7 +1665,7 @@
         CARDS.forEach(c => { collection[c.id] = 0; });
         return {
           id, name, avatar, password,
-          hourglass: 240, packPoints: 0,
+          hourglass: 240, packPoints: 0, packPointsByExpansion: {},
           rating: 1000, wins: 0, losses: 0, streak: 0,
           collection, packRewardsClaimed: {}, allCollectionRewardClaimed: false, activeDeckSlot: 0, secretCodesRedeemed: [],
           decks: [
@@ -1760,6 +1760,7 @@
         loaded.secretCodesRedeemed=Array.isArray(loaded.secretCodesRedeemed)?[...new Set(loaded.secretCodesRedeemed.filter(x=>typeof x==='string').map(x=>x.trim().toUpperCase()).filter(Boolean))].slice(0,100):[];
         delete loaded.gold;
         loaded.packPoints = this.sanitizeCount(loaded.packPoints, 0);
+        loaded.packPointsByExpansion = loaded.packPointsByExpansion && typeof loaded.packPointsByExpansion === 'object' && !Array.isArray(loaded.packPointsByExpansion) ? Object.fromEntries(Object.entries(loaded.packPointsByExpansion).filter(([key,value])=>/^[a-z0-9]+$/i.test(key)).map(([key,value])=>[key.toLowerCase(),this.sanitizeCount(value,0)])) : {};
         loaded.rating = typeof loaded.rating === 'number' && Number.isFinite(loaded.rating) ? Math.max(500, Math.floor(loaded.rating)) : 1000;
         loaded.wins = this.sanitizeCount(loaded.wins, 0);
         loaded.losses = this.sanitizeCount(loaded.losses, 0);
@@ -1802,7 +1803,7 @@
         if (!this.data) return;
         const rk = this.getRankInfo(this.data.rating);
         document.getElementById('ui-hourglass').textContent = this.data.hourglass;
-        document.getElementById('ui-points').textContent = this.data.packPoints || 0;
+        document.getElementById('ui-points').textContent = (this.data.packPoints || 0) + Object.values(this.data.packPointsByExpansion || {}).reduce((sum,value)=>sum+this.sanitizeCount(value,0),0);
         document.getElementById('header-acc-avatar').textContent = this.data.avatar || 'TR';
         document.getElementById('header-acc-name').textContent = this.data.name || 'トレーナー';
         document.getElementById('header-rank-badge').textContent = `${rk.title} • ${this.data.rating}RP`;
@@ -7441,6 +7442,68 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
       return true;
     };
 
+
+    const PACK_SLOT_RATES = {
+      standard4: [
+        {rarities:['U'],weight:90},{rarities:['R'],weight:5},{rarities:['RR'],weight:1.666},
+        {rarities:['AR'],weight:2.572},{rarities:['SR','SAR'],weight:0.5},
+        {rarities:['IM'],weight:0.222},{rarities:['UR'],weight:0.04}
+      ],
+      standard5: [
+        {rarities:['U'],weight:60},{rarities:['R'],weight:20},{rarities:['RR'],weight:6.664},
+        {rarities:['AR'],weight:10.288},{rarities:['SR','SAR'],weight:2},
+        {rarities:['IM'],weight:0.888},{rarities:['UR'],weight:0.16}
+      ],
+      shiny4: [
+        {rarities:['U'],weight:89},{rarities:['R'],weight:4.952},{rarities:['RR'],weight:1.666},
+        {rarities:['AR'],weight:2.572},{rarities:['SR','SAR'],weight:0.5},
+        {rarities:['IM'],weight:0.222},{rarities:['S'],weight:0.714},
+        {rarities:['SSR'],weight:0.333},{rarities:['UR'],weight:0.04}
+      ],
+      shiny5: [
+        {rarities:['U'],weight:56},{rarities:['R'],weight:19.81},{rarities:['RR'],weight:6.664},
+        {rarities:['AR'],weight:10.288},{rarities:['SR','SAR'],weight:2},
+        {rarities:['IM'],weight:0.888},{rarities:['S'],weight:2.857},
+        {rarities:['SSR'],weight:1.333},{rarities:['UR'],weight:0.16}
+      ],
+      rareA1: [
+        {rarities:['AR'],weight:40},{rarities:['SR','SAR'],weight:50},
+        {rarities:['IM'],weight:5},{rarities:['UR'],weight:5}
+      ],
+      rareA1Mewtwo: [
+        {rarities:['AR'],weight:42.1},{rarities:['SR','SAR'],weight:47.4},
+        {rarities:['IM'],weight:5.26},{rarities:['UR'],weight:5.26}
+      ],
+      rareA2: [
+        {rarities:['AR'],weight:46.2},{rarities:['SR','SAR'],weight:46.2},
+        {rarities:['IM'],weight:3.85},{rarities:['UR'],weight:3.85}
+      ],
+      deluxe3: [
+        {rarities:['C'],weight:23},{rarities:['U'],weight:18},{rarities:['R'],weight:40.57},
+        {rarities:['AR'],weight:12.9},{rarities:['SR','SAR'],weight:2.5},
+        {rarities:['IM'],weight:1.11},{rarities:['SSR'],weight:1.67},{rarities:['UR'],weight:0.198}
+      ],
+      deluxeRare: [
+        {rarities:['AR'],weight:23.1},{rarities:['SR','SAR'],weight:61.5},
+        {rarities:['IM'],weight:3.85},{rarities:['SSR'],weight:7.69},{rarities:['UR'],weight:3.85}
+      ],
+      bonus: [
+        {rarities:['S'],weight:68.2},{rarities:['SSR'],weight:31.8}
+      ]
+    };
+    const pickWeightedPackCard = (cards,weights,rarityOf,random=Math.random) => {
+      const pools=(weights||[]).map(entry=>({
+        cards:cards.filter(card=>entry.rarities.includes(rarityOf(card))),
+        weight:Number(entry.weight)||0
+      })).filter(entry=>entry.cards.length&&entry.weight>0);
+      const total=pools.reduce((sum,entry)=>sum+entry.weight,0);
+      if(!total)return cards.length?cards[Math.floor(random()*cards.length)]:null;
+      let roll=Math.min(0.999999999999,Math.max(0,random()))*total;
+      let selected=pools[pools.length-1];
+      for(const entry of pools){roll-=entry.weight;if(roll<0){selected=entry;break;}}
+      return selected.cards[Math.floor(random()*selected.cards.length)];
+    };
+
     const packSystem = {
       seriesFilter: 'ALL', pendingPackId: null, lastPulled: [],
       openingTimer: null, opening: false, executingOpen: false,
@@ -7700,7 +7763,14 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           ui.toast('開封処理を開始できませんでした');
           return;
         }
-        const sourceSet=String(PACK_CATALOG_DATA[packId]?.sourceSet||PACKS.find(p=>p.id===packId)?.code||'').toLowerCase();
+        const packMeta=PACKS.find(p=>p.id===packId);
+        const sourceSet=String(PACK_CATALOG_DATA[packId]?.sourceSet||packMeta?.code||'').toLowerCase();
+        const isDeluxe=sourceSet==='a4b'||sourceSet==='b4b';
+        const hasShinyInMainSlots=['a2b','a3','a3a','a3b','a4','a4a'].includes(sourceSet);
+        const bonusChance=['a4','a4a'].includes(sourceSet)?0.0833:(
+          ['b1','b1a','b2','b2a','b2b','b3','b3a','b3b','b4','b4a'].includes(sourceSet)?0.0524:
+          sourceSet==='b4b'?0.0167:0
+        );
           if(sourceSet&&!CARD_DATA_SUPPLEMENT.collectionLoaded.has(sourceSet)){
             this.executingOpen=true;
             CARD_DATA_SUPPLEMENT.loadSet(sourceSet,true).then(()=>{this.executingOpen=false;this.executeOpen(packId,count);}).catch(err=>{this.executingOpen=false;console.warn(err);this.resetStage();ui.toast('カードデータを読み込めず、開封できませんでした。通信を確認してください');});
@@ -7713,51 +7783,60 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           return;
         }
         this.executingOpen = true;
-        const backup = { hourglass: accountMgr.data.hourglass, packPoints: accountMgr.data.packPoints || 0, collection: { ...accountMgr.data.collection } };
+        const pointsBackup={...(accountMgr.data.packPointsByExpansion||{})};
+        const backup = { hourglass: accountMgr.data.hourglass, packPoints: accountMgr.data.packPoints || 0, packPointsByExpansion:pointsBackup, collection: { ...accountMgr.data.collection } };
         try {
         accountMgr.data.hourglass -= cost;
-        accountMgr.data.packPoints = (accountMgr.data.packPoints || 0) + count;
-        const packMeta = PACKS.find(p => p.id === packId);
+        accountMgr.data.packPointsByExpansion=accountMgr.data.packPointsByExpansion||{};
+        const pointsEarned=count*5;
+        accountMgr.data.packPointsByExpansion[sourceSet]=(Number(accountMgr.data.packPointsByExpansion[sourceSet])||0)+pointsEarned;
         const theme = CARDS.filter(c => (c.packIds || []).includes(packId));
-        const featuredCandidate = packMeta && CARD_MAP[packMeta.artCard];
-        const featuredCard = featuredCandidate && theme.some(x => x.id === featuredCandidate.id) ? featuredCandidate : null;
+        if(!theme.length)throw new Error('このパックの収録カードデータがありません');
         const packRarity = c => c.catalogRarity || c.rarity || 'C';
-        const themeCommon = theme.filter(c => ['C', 'U'].includes(packRarity(c)));
-        const themeRare = theme.filter(c => !['C', 'U'].includes(packRarity(c)));
-        const themeSrPlus = theme.filter(c => ['SR', 'SAR', 'UR', 'SSR', 'IM'].includes(packRarity(c)));
-        const comPool = themeCommon.length >= 2 ? themeCommon : theme;
-        const rarePool = themeRare.length ? themeRare : theme;
-
-        const pulled = [];
-        for (let p = 0; p < count; p++) {
-          for (let i = 0; i < 4; i++) {
-            const c = comPool[Math.floor(Math.random() * comPool.length)];
-            const isNew = (accountMgr.data.collection[c.id] || 0) === 0;
-            pulled.push({ card: c, isNew, order: pulled.length });
-            accountMgr.data.collection[c.id] = (accountMgr.data.collection[c.id] || 0) + 1;
+        const choose=(weights)=>pickWeightedPackCard(theme,weights,packRarity);
+        const addPulled=card=>{
+          if(!card)throw new Error('パック抽選対象のカードがありません');
+          const isNew=(accountMgr.data.collection[card.id]||0)===0;
+          pulled.push({card,isNew,order:pulled.length});
+          accountMgr.data.collection[card.id]=(accountMgr.data.collection[card.id]||0)+1;
+        };
+        const pulled=[];
+        for(let p=0;p<count;p++){
+          const isRarePack=!isDeluxe&&Math.random()<0.0005;
+          if(isRarePack){
+            let rareWeights=PACK_SLOT_RATES.rareA1;
+            if(packId==='a1_mewtwo')rareWeights=PACK_SLOT_RATES.rareA1Mewtwo;
+            else if(['a2_dialga','a2_palkia'].includes(packId))rareWeights=PACK_SLOT_RATES.rareA2;
+            else if(isDeluxe)rareWeights=PACK_SLOT_RATES.deluxeRare;
+            for(let i=0;i<(isDeluxe?4:5);i++)addPulled(choose(rareWeights));
+            continue;
           }
-          const roll = Math.random();
-          const forceSr = (count === 10 && p === 9);
-          let pool = rarePool;
-          if (forceSr) {
-            // 対象パック内にSR以上がある場合は10連の50枚目をその枠から選ぶ。
-            // 未確認レアリティだけのパックでは、他パックのカードを混ぜず同じパックから選ぶ。
-            pool = themeSrPlus.length ? themeSrPlus : theme;
-          } else if (featuredCard && roll < 0.35) pool = [featuredCard];
-          else if (roll < 0.55) pool = rarePool.filter(c => ['UR', 'SAR', 'SSR', 'IM'].includes(packRarity(c)));
-          else if (roll < 0.85) pool = rarePool.filter(c => ['SR', 'RR', 'AR', 'S'].includes(packRarity(c)));
-          if (pool.length === 0) pool = rarePool.length ? rarePool : theme;   // never pull from a different pack
-          const rc = pool[Math.floor(Math.random() * pool.length)];
-          const isNew = (accountMgr.data.collection[rc.id] || 0) === 0;
-          pulled.push({ card: rc, isNew, order: pulled.length });
-          accountMgr.data.collection[rc.id] = (accountMgr.data.collection[rc.id] || 0) + 1;
+          if(isDeluxe){
+            addPulled(choose([{rarities:['C'],weight:100}]));
+            addPulled(choose([{rarities:['C'],weight:17.7},{rarities:['U'],weight:82.3}]));
+            addPulled(choose(PACK_SLOT_RATES.deluxe3));
+            addPulled(choose([{rarities:['RR'],weight:100}]));
+            continue;
+          }
+          const commonPool=theme.filter(card=>packRarity(card)==='C');
+          const commonFallback=theme.filter(card=>['C','U'].includes(packRarity(card)));
+          for(let i=0;i<3;i++){
+            const pool=commonPool.length?commonPool:commonFallback;
+            addPulled(pool[Math.floor(Math.random()*pool.length)]||theme[Math.floor(Math.random()*theme.length)]);
+          }
+          addPulled(choose(hasShinyInMainSlots?PACK_SLOT_RATES.shiny4:PACK_SLOT_RATES.standard4));
+          addPulled(choose(hasShinyInMainSlots?PACK_SLOT_RATES.shiny5:PACK_SLOT_RATES.standard5));
+          if(bonusChance>0&&Math.random()<bonusChance){
+            const bonusCard=choose(PACK_SLOT_RATES.bonus);
+            if(bonusCard)addPulled(bonusCard);
+          }
         }
         this.lastPulled = pulled;
         accountMgr.saveCurrent();
         sound.rarePull();
 
         const srCnt = pulled.filter(x => ['SR', 'SAR', 'UR', 'SSR', 'IM'].includes(x.card.catalogRarity || x.card.rarity)).length;
-        document.getElementById('pack-result-summary').textContent = `${count}パック(${pulled.length}枚)開封！ SR以上: ${srCnt}枚 / パックポイント +${count}`;
+        document.getElementById('pack-result-summary').textContent = `${count}パック(${pulled.length}枚)開封！ SR以上: ${srCnt}枚 / パックポイント +${pointsEarned}`;
         document.getElementById('pack-stage').classList.add('hidden');
         document.getElementById('pack-swipe-stage').classList.add('hidden');
         document.getElementById('pack-ten-stage').classList.add('hidden');
@@ -7766,6 +7845,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         } catch (err) {
           console.error(err);
           Object.assign(accountMgr.data, backup);
+          accountMgr.data.packPointsByExpansion=backup.packPointsByExpansion;
           accountMgr.saveCurrent();
           ui.toast('開封中にエラーが発生しました。砂時計は消費されていません');
           this.resetStage();
@@ -7938,9 +8018,16 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       craftCard(id) {
         const c = CARD_MAP[id];
-        const cost = c.rarityEstimated ? 100 : ({ C: 35, U: 70, R: 150, RR: 250, SR: 400, SAR: 600, UR: 800 }[c.rarity] || 100);
-        if ((accountMgr.data.packPoints || 0) < cost) { ui.toast(`パックポイントが足りません (必要:${cost})`); return; }
-        accountMgr.data.packPoints -= cost;
+        const rarity=c.catalogRarity||c.rarity||'C';
+        const cost = c.rarityEstimated ? 100 : ({ C: 35, U: 70, R: 150, RR: 500, AR: 400, SR: 1250, SAR: 1250, IM: 1500, S: 1000, SSR: 1350, UR: 2500 }[rarity] || 100);
+        const setCode=String(c.setCode||c.sourceSet||'').toLowerCase();
+        accountMgr.data.packPointsByExpansion=accountMgr.data.packPointsByExpansion||{};
+        const setBalance=Number(accountMgr.data.packPointsByExpansion[setCode])||0;
+        const legacyBalance=Number(accountMgr.data.packPoints)||0;
+        if(setBalance+legacyBalance<cost){ui.toast(`この拡張パックのポイントが足りません (必要:${cost} / 所持:${setBalance+legacyBalance})`);return;}
+        const useSetPoints=Math.min(setBalance,cost);
+        accountMgr.data.packPointsByExpansion[setCode]=setBalance-useSetPoints;
+        accountMgr.data.packPoints=legacyBalance-(cost-useSetPoints);
         accountMgr.data.collection[id] = (accountMgr.data.collection[id] || 0) + 1;
         accountMgr.saveCurrent(); sound.energy();
         ui.toast(`「${getCardDisplayName(c)}」を交換しました！`); this.render();
