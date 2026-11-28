@@ -7,7 +7,13 @@ const pe=html.indexOf('\n      },',p);
 assert.ok(p>=0&&pe>p,'generic effect parser exists');
 const parseMethod=html.slice(p,pe+8);
 const parse=new Function(`return ({${parseMethod}}).parseGenericEffect;`)();
-const ctx={energyMap:{G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal'}};
+const ctx={
+  energyMap:{G:'Grass',R:'Fire',W:'Water',L:'Lightning',P:'Psychic',F:'Fighting',D:'Darkness',M:'Metal'},
+  energyEffectType(code){
+    const key=String(code||'').trim().toUpperCase();
+    return this.energyMap[key]||({GRASS:'Grass',FIRE:'Fire',WATER:'Water',LIGHTNING:'Lightning',PSYCHIC:'Psychic',FIGHTING:'Fighting',DARKNESS:'Darkness',METAL:'Metal',COLORLESS:'Colorless',DRAGON:'Dragon'})[key]||null;
+  }
+};
 const cases=[
   ["During your opponent's next turn, attacks used by the Defending Pokémon do −20 damage.",'defendingAttackDamageReductionNextTurn',20],
   ["During your opponent's next turn, the Defending Pokémon can't attack.",'defendingCannotAttackNextTurn',true],
