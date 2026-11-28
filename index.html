@@ -7145,6 +7145,24 @@ const PACK_CATALOG_DATA = {
         if((m=t.match(/^If this (?:Pokémon|Pokemon) has a Pokémon Tool attached, attacks used by this (?:Pokémon|Pokemon) cost (\d+) less \[([A-Za-z]+)\] Energy$/i)))return {passive:true,attackCostReductionIfToolAttached:true,attackCostReduction:Number(m[1]),attackCostReductionType:typeOf(m[2])};
         if(/^If any damage is done to this (?:Pokémon|Pokemon) by attacks, flip a coin\. If heads, prevent that damage$/i.test(t))return {passive:true,flipCoinToPreventAttackDamage:true};
         if((m=t.match(/^Once during your turn, when you play this (?:Pokémon|Pokemon) from your hand to evolve 1 of your (?:Pokémon|Pokemon), you may take (?:a|1) \[([A-Za-z]+)\] Energy from your Energy Zone and attach it to your Active \[([A-Za-z]+)\] (?:Pokémon|Pokemon)$/i)))return {trigger:'onEvolve',action:'attachEnergyOnEvolveToActiveType',energyType:typeOf(m[1]),targetPokemonType:typeOf(m[2])};
+        const onEvolveMatch=t.match(/^Once during your turn, when you play this (?:Pokémon|Pokemon|card) from your hand to evolve 1 of your (?:Pokémon|Pokemon), you may (.+)$/i);
+        if(onEvolveMatch){
+          const effectText=onEvolveMatch[1].replace(/^use this Ability[.!。]\s*/i,'').replace(/[.!。]$/,'').trim();
+          if((m=effectText.match(/^draw (\d+) cards$/i)))return {trigger:'onEvolve',action:'drawCardsOnEvolve',amount:Number(m[1])};
+          if(/^discard a random Energy from your opponent's Active (?:Pokémon|Pokemon)$/i.test(effectText))return {trigger:'onEvolve',action:'discardRandomOpponentActiveEnergyOnEvolve'};
+          if((m=effectText.match(/^heal (\d+) damage from 1 of your \[([A-Za-z]+)\] (?:Pokémon|Pokemon)$/i)))return {trigger:'onEvolve',action:'healOwnOneOnEvolve',amount:Number(m[1]),targetPokemonType:typeOf(m[2])};
+          if(/^put a Supporter card from your discard pile into your hand$/i.test(effectText))return {trigger:'onEvolve',action:'recoverSupporterFromDiscardOnEvolve'};
+          if(/^have your opponent shuffle their hand into their deck\. For each remaining point that your opponent needs to win, they draw a card$/i.test(effectText))return {trigger:'onEvolve',action:'shuffleOpponentHandDrawPointsOnEvolve'};
+          if((m=effectText.match(/^put (\d+) random Pokémon Tool cards from your discard pile into your hand$/i)))return {trigger:'onEvolve',action:'recoverRandomToolsOnEvolve',amount:Number(m[1])};
+          if((m=effectText.match(/^do (\d+) damage to your opponent's Active (?:Pokémon|Pokemon)$/i)))return {trigger:'onEvolve',action:'damageOpponentActiveOnEvolve',amount:Number(m[1])};
+          if(/^prevent all damage from—and effects of—attacks from your opponent's (?:Pokémon|Pokemon) done to this (?:Pokémon|Pokemon) until the end of your opponent's next turn$/i.test(effectText))return {trigger:'onEvolve',action:'preventAttackDamageOnEvolve'};
+          if(/^flip a coin\. If heads, your opponent's Active (?:Pokémon|Pokemon) is now Paralyzed$/i.test(effectText))return {trigger:'onEvolve',action:'paralyzeOpponentActiveOnEvolve'};
+          if(/^look at the top 4 cards of your deck and put all Item cards you find there into your hand\. Shuffle the other cards back into your deck$/i.test(effectText))return {trigger:'onEvolve',action:'takeTopItemCardsOnEvolve'};
+          if(/^make your opponent's Active (?:Pokémon|Pokemon) Poisoned and Burned$/i.test(effectText))return {trigger:'onEvolve',action:'poisonBurnOpponentActiveOnEvolve'};
+          if(/^move a random Energy from your opponent's Active (?:Pokémon|Pokemon) to this (?:Pokémon|Pokemon)$/i.test(effectText))return {trigger:'onEvolve',action:'moveRandomOpponentActiveEnergyToSelfOnEvolve'};
+          const deckPut=effectText.match(/^put a random ([A-Za-z][A-Za-z0-9'♀♂ .-]*) from your deck onto your Bench$/i);
+          if(deckPut)return {trigger:'onEvolve',action:'searchRandomCardInDeck',searchDeckTarget:'bench',searchDeckCategory:'Pokemon',searchDeckNames:[deckPut[1].trim()]};
+        }
 
         if((m=t.match(/^At the beginning of your turn, if this (?:Pokémon|Pokemon) is in the Active Spot, put a random \[([A-Za-z]+)\] (?:Pokémon|Pokemon) from your deck into your hand$/i)))return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckPokemonType:typeOf(m[1]),trigger:'turnStart',requiresActive:true};
         const deckSearchText=t.replace(/^Once during your turn, you may\s+/i,'');
@@ -9256,6 +9274,122 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
       evolve(hIdx, z, i) { return this.evolveCard('player', hIdx, z, i); },
 
+      resolveOnEvolveAbility(side,z,i,useEffect=null,targetZone=null,targetIndex=null) {
+        const board=side==='player'?this.p:this.o,opp=side==='player'?this.o:this.p,oppSide=side==='player'?'opp':'player';
+        const inst=z==='active'?board.active:board.bench[i],card=inst&&CARD_MAP[inst.cardId],ability=card?.ability,effect=ability?.genericEffect;
+        if(!inst||effect?.trigger!=='onEvolve'||!effect.action)return false;
+        const action=effect.action;
+        const own=[...(board.active?[{z:'active',i:0,inst:board.active}]:[]),...board.bench.map((p,index)=>({z:'bench',i:index,inst:p}))];
+        const healTargets=own.filter(x=>x.inst.hp<x.inst.maxHp&&(!effect.targetPokemonType||CARD_MAP[x.inst.cardId]?.type===effect.targetPokemonType));
+        const supporterTargets=board.discard.map((id,index)=>({id,index})).filter(x=>CARD_MAP[x.id]?.subType==='Supporter');
+        const toolTargets=board.discard.map((id,index)=>({id,index})).filter(x=>CARD_MAP[x.id]?.subType==='Tool');
+        const canUse=()=>{
+          if(action==='attachEnergyOnEvolveToActiveType')return !!(board.active&&board.energyTypes?.includes(effect.energyType)&&CARD_MAP[board.active.cardId]?.type===effect.targetPokemonType);
+          if(action==='discardRandomOpponentActiveEnergyOnEvolve'||action==='moveRandomOpponentActiveEnergyToSelfOnEvolve')return !!(opp.active&&opp.active.energies?.length);
+          if(action==='healOwnOneOnEvolve')return healTargets.length>0;
+          if(action==='recoverSupporterFromDiscardOnEvolve')return supporterTargets.length>0;
+          if(action==='recoverRandomToolsOnEvolve')return toolTargets.length>0;
+          if(action==='damageOpponentActiveOnEvolve'||action==='paralyzeOpponentActiveOnEvolve'||action==='poisonBurnOpponentActiveOnEvolve')return !!opp.active;
+          if(action==='takeTopItemCardsOnEvolve')return board.deck?.length>0;
+          if(action==='searchRandomCardInDeck')return board.bench.length<3&&board.deck?.length>0;
+          return ['drawCardsOnEvolve','shuffleOpponentHandDrawPointsOnEvolve','preventAttackDamageOnEvolve'].includes(action);
+        };
+        if(!canUse()){if(side==='player')ui.toast('この特性を使える対象・カードがありません');return false;}
+        if(useEffect===null){
+          if(side!=='player')useEffect=true;
+          else{
+            this.actionLocked=true;
+            const html="<div class=\\"grid grid-cols-2 gap-2\\"><button class=\\"p-3 rounded-xl bg-sky-600 text-white font-black\\" onclick=\\"setTimeout(()=>battle.resolveOnEvolveAbility('player','"+z+"',"+i+",true),0);ui.closeSelectModal();\\">使う</button><button class=\\"p-3 rounded-xl bg-slate-100 text-slate-700 font-black\\" onclick=\\"setTimeout(()=>battle.resolveOnEvolveAbility('player','"+z+"',"+i+",false),0);ui.closeSelectModal();\\">使わない</button></div>";
+            ui.openSelectModal((ability?.name||'特性')+'を使いますか？',html,true);
+            return true;
+          }
+        }
+        if(!useEffect){
+          inst.abilityUsed=true;this.actionLocked=false;
+          this.log((ability?.name||'特性')+'は使わなかった。');
+          this.render();if(side==='player'&&this.isOnlineP2P)this.syncToPeer(false);
+          return true;
+        }
+        let chosen=null;
+        if(action==='healOwnOneOnEvolve'){
+          if(targetZone!==null)chosen=healTargets.find(x=>x.z===targetZone&&x.i===Number(targetIndex))||null;
+          if(targetZone!==null&&!chosen)return false;
+          if(!chosen&&side==='player'&&healTargets.length>1){
+            this.actionLocked=true;
+            const html=healTargets.map(x=>"<div class=\\"p-3 rounded-xl border bg-slate-50 cursor-pointer\\" onclick=\\"setTimeout(()=>battle.resolveOnEvolveAbility('player','"+z+"',"+i+",true,'"+x.z+"',"+x.i+"),0);ui.closeSelectModal();\\">"+ui.renderMiniCard(x.inst.cardId)+"<div class=\\"text-center text-xs font-bold\\">"+(x.z==='active'?'バトル場':'ベンチ')+' HP '+x.inst.hp+'/'+x.inst.maxHp+"</div></div>").join('');
+            ui.openSelectModal('HPを回復するポケモンを選択',html,true);return true;
+          }
+          if(!chosen)chosen=healTargets.reduce((a,b)=>(b.inst.maxHp-b.inst.hp)>(a.inst.maxHp-a.inst.hp)?b:a,healTargets[0]);
+        }
+        if(action==='recoverSupporterFromDiscardOnEvolve'){
+          if(targetZone==='discard')chosen=supporterTargets.find(x=>x.index===Number(targetIndex))||null;
+          if(targetZone!==null&&!chosen)return false;
+          if(!chosen&&side==='player'&&supporterTargets.length>1){
+            this.actionLocked=true;
+            const html=supporterTargets.map(x=>"<div class=\\"p-3 rounded-xl border bg-slate-50 cursor-pointer\\" onclick=\\"setTimeout(()=>battle.resolveOnEvolveAbility('player','"+z+"',"+i+",true,'discard',"+x.index+"),0);ui.closeSelectModal();\\">"+ui.renderMiniCard(x.id)+"<div class=\\"text-center text-xs font-bold\\">"+escapeHtml(getCardDisplayName(CARD_MAP[x.id]))+"</div></div>").join('');
+            ui.openSelectModal('手札に戻すサポートを選択',html,true);return true;
+          }
+          if(!chosen)chosen=supporterTargets[0];
+        }
+        this.actionLocked=false;
+        if(action==='searchRandomCardInDeck'){
+          if(!this.resolveRandomDeckSearch(side,effect,ability?.name||'特性'))return false;
+        }else if(action==='attachEnergyOnEvolveToActiveType'){
+          board.active.energies.push(effect.energyType);this.nightmareAura(side,board.active,effect.energyType);
+          this.log((ability?.name||'特性')+'！バトルポケモンに'+(TYPE_META[effect.energyType]?.code||effect.energyType)+'エネルギーをつけた！');
+        }else if(action==='drawCardsOnEvolve'){
+          const before=board.hand.length;this.drawCards(side,Number(effect.amount)||0);
+          this.log((ability?.name||'特性')+'！山札を'+(board.hand.length-before)+'枚引いた！');
+        }else if(action==='discardRandomOpponentActiveEnergyOnEvolve'){
+          const ix=Math.floor(Math.random()*opp.active.energies.length),removed=opp.active.energies.splice(ix,1)[0];
+          this.log((ability?.name||'特性')+'！相手のバトルポケモンの'+(TYPE_META[removed]?.code||removed)+'エネルギーをトラッシュ！');
+        }else if(action==='healOwnOneOnEvolve'&&chosen){
+          chosen.inst.hp=Math.min(chosen.inst.maxHp,chosen.inst.hp+Number(effect.amount));
+          this.log((ability?.name||'特性')+'！'+getCardDisplayName(CARD_MAP[chosen.inst.cardId])+'のHPを'+Number(effect.amount)+'回復！');
+        }else if(action==='recoverSupporterFromDiscardOnEvolve'&&chosen){
+          const recovered=board.discard.splice(chosen.index,1)[0];if(recovered)board.hand.push(recovered);
+          this.log((ability?.name||'特性')+'！トラッシュからサポートを手札に戻した！');
+        }else if(action==='shuffleOpponentHandDrawPointsOnEvolve'){
+          const returned=opp.hand.splice(0);opp.deck.push(...returned);opp.deck=this.shuffle(opp.deck);
+          const drawCount=Math.max(0,3-Number(opp.points||0)),before=opp.hand.length;
+          this.drawCards(oppSide,drawCount);
+          this.log((ability?.name||'特性')+'！相手は手札を山札に戻してシャッフルし、'+(opp.hand.length-before)+'枚引いた！');
+        }else if(action==='recoverRandomToolsOnEvolve'){
+          const indices=toolTargets.map(x=>x.index),picked=[];
+          for(let n=0;n<Math.min(Number(effect.amount)||1,indices.length);n++){const pick=Math.floor(Math.random()*indices.length);picked.push(indices.splice(pick,1)[0]);}
+          picked.sort((a,b)=>b-a).forEach(index=>{const id=board.discard.splice(index,1)[0];if(id)board.hand.push(id);});
+          this.log((ability?.name||'特性')+'！トラッシュからポケモンのどうぐを'+picked.length+'枚手札に戻した！');
+        }else if(action==='damageOpponentActiveOnEvolve'&&opp.active){
+          const amount=Math.max(0,Number(effect.amount)||0);opp.active.hp-=amount;
+          this.showDmg(oppSide+'-active',amount,false);
+          this.log((ability?.name||'特性')+'！相手のバトルポケモンに'+amount+'ダメージ！');
+          if(opp.active.hp<=0)this.checkKO(oppSide,'active',0,false);
+        }else if(action==='preventAttackDamageOnEvolve'){
+          inst.preventAttackDamageUntilTurn=this.turn+1;
+          this.log((ability?.name||'特性')+'！次の相手の番の終わりまで、ワザのダメージと効果を受けない！');
+        }else if(action==='paralyzeOpponentActiveOnEvolve'){
+          const heads=Math.random()<0.5;
+          this.log((ability?.name||'特性')+'！コイントスは'+(heads?'オモテ！':'ウラ。'));
+          if(heads)this.applySpecialCondition(opp.active,'Paralyzed');
+        }else if(action==='takeTopItemCardsOnEvolve'){
+          const revealed=board.deck.splice(0,Math.min(4,board.deck.length));
+          const items=revealed.filter(id=>CARD_MAP[id]?.category==='Trainer'&&CARD_MAP[id]?.subType==='Item');
+          const rest=revealed.filter(id=>!items.includes(id));
+          board.hand.push(...items);board.deck=this.shuffle([...board.deck,...rest]);
+          this.log((ability?.name||'特性')+'！山札の上から'+revealed.length+'枚を見て、アイテム'+items.length+'枚を手札に加えた！');
+        }else if(action==='poisonBurnOpponentActiveOnEvolve'){
+          this.applySpecialCondition(opp.active,'Poisoned');this.applySpecialCondition(opp.active,'Burned');
+          this.log((ability?.name||'特性')+'！相手のバトルポケモンをどく・やけどにした！');
+        }else if(action==='moveRandomOpponentActiveEnergyToSelfOnEvolve'){
+          const ix=Math.floor(Math.random()*opp.active.energies.length),energy=opp.active.energies.splice(ix,1)[0];
+          inst.energies.push(energy);this.log((ability?.name||'特性')+'！相手のバトルポケモンから'+(TYPE_META[energy]?.code||energy)+'エネルギーを移動！');
+        }
+        inst.abilityUsed=true;this.actionLocked=false;
+        sound.energy();battleVfx.triggerBurst(side);this.render();
+        if(side==='player'&&this.isOnlineP2P)this.syncToPeer(false);
+        return true;
+      },
+
       evolveCard(side, hIdx, z, i, allowRareCandy = false, deferRenderAndSync = false) {
         const board = side === 'player' ? this.p : this.o;
         const evoId = board.hand[hIdx], evoC = CARD_MAP[evoId];
@@ -9275,14 +9409,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         t.under = [...(t.under || []), t.cardId]; t.cardId = evoId; t.maxHp = evoC.hp; t.hp = Math.max(10, evoC.hp - dmg); t.turnPlayed = this.turn; t.abilityUsed = false;
         t.status = null; t.statusEffects = []; t.statusUntilTurn = 0; t.temporaryFlags = {};
         const evolutionAbility=evoC.ability?.genericEffect;
-        if(evolutionAbility?.action==='attachEnergyOnEvolveToActiveType'){
-          const target=board.active;
-          if(target&&board.energyTypes?.includes(evolutionAbility.energyType)&&CARD_MAP[target.cardId]?.type===evolutionAbility.targetPokemonType){
-            target.energies.push(evolutionAbility.energyType);
-            this.nightmareAura(side,target,evolutionAbility.energyType);
-            this.log(`${getCardDisplayName(evoC)}の特性！バトルポケモンに${TYPE_META[evolutionAbility.energyType]?.code||evolutionAbility.energyType}エネルギーをつけた！`);
-          }
-        }
+        if(evolutionAbility?.trigger==='onEvolve')setTimeout(()=>{if(!this.over)this.resolveOnEvolveAbility(side,z,i,null);},0);
         sound.rarePull(); battleVfx.triggerBurst(side, '#0ea5e9', '#a855f7');
         this.showCutin('進化！', `${getCardDisplayName(evoC)} に進化！`);
         this.log(`${getCardDisplayName(evoC)}に進化した！`);
@@ -10153,6 +10280,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
 
         if (c.ability.passive) { if (side === 'player') ui.toast(`「${c.ability.name}」は自動で発動する特性です`); return; }
 
+        if(c.ability.genericEffect?.trigger==='onEvolve'){if(side==='player')ui.toast('この特性は進化したときに発動する特性です');return;}
         if (c.ability.genericEffect?.action) { this.resolveGenericAbility(side,z,i); return; }
 
         if (c.id === 'c_greninja_ex') {
