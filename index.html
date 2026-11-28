@@ -10414,8 +10414,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
           }
         }
 
-        const ge=atk.genericEffect||{};
-        if(ge.discardHandCardOrFail){
+        if(atk.genericEffect?.discardHandCardOrFail){
           if(!s.hand.length){
             this.log(getCardDisplayName(attC)+'のワザは、トラッシュできる手札がないため失敗！');
             if(side==='player')this.endTurn();
