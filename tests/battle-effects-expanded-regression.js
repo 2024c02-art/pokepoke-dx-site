@@ -132,7 +132,7 @@ assert.match(html,/def\.active = def\.bench\.shift\(\);\s*def\.active\.movedToAc
 assert.match(html,/this\.o\.active=this\.o\.bench\.shift\(\);this\.o\.active\.movedToActiveTurn=this\.turn/,'CPU batch promotion records the turn');
 assert.match(html,/ge\.requiresSelfHasTool&&!inst\.tool/,'Tool-dependent Abilities validate their attached Tool');
 assert.match(html,/resolveDiscardHandAttackChoice\(handCardIndex\)/,'the hand-discard attack choice has a dedicated resolver');
-assert.match(html,/ge\.discardHandCardOrFail/,'hand-discard attacks are resolved before damage');
+assert.match(html,/atk\.genericEffect\?\.discardHandCardOrFail/,'hand-discard attacks are resolved before damage');
 assert.match(html,/attackStatusResolved/,'resuming an attack selection must not repeat confusion checks');
 assert.match(html,/pending\.choice \|\| null/,'copied attacks preserve pre-attack resolution state');
 assert.match(html,/attackDamagePenaltyUntilTurn/);
