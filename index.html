@@ -7100,6 +7100,7 @@ const PACK_CATALOG_DATA = {
       },
       parseGenericAbility(text) {
         const t=String(text||'').replace(/\u00a0/g,' ').trim().replace(/[.!。]$/,'');if(!t)return null;
+        if((m=t.match(/^If you have another ([A-Za-z][A-Za-z0-9'♀♂ .-]*) in play, this (?:Pokémon|Pokemon)'s Retreat Cost is (\d+) less$/i)))return {passive:true,retreatCostReductionIfAnotherNamedPokemonInPlay:m[1].trim(),retreatCostReduction:Number(m[2])};
         let m;const typeOf=code=>this.energyMap[String(code||'').toUpperCase()]||({grass:'Grass',fire:'Fire',water:'Water',lightning:'Lightning',psychic:'Psychic',fighting:'Fighting',darkness:'Darkness',metal:'Metal',colorless:'Colorless'})[String(code||'').toLowerCase()]||null;
 
         if((m=t.match(/^At the beginning of your turn, if this (?:Pokémon|Pokemon) is in the Active Spot, put a random \[([A-Za-z]+)\] (?:Pokémon|Pokemon) from your deck into your hand$/i)))return {action:'searchRandomCardInDeck',searchDeckTarget:'hand',searchDeckCategory:'Pokemon',searchDeckPokemonType:typeOf(m[1]),trigger:'turnStart',requiresActive:true};
@@ -9594,10 +9595,10 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if (side === 'player' && this.isOnlineP2P) this.syncToPeer(false);
       },
 
-      hasPokemonNamed(side,name) {
+      hasPokemonNamed(side,name,excludeInst=null) {
         const board=side==='player'?this.p:this.o;
         const wanted=String(name||'').trim().toLowerCase();
-        return [...(board?.active?[board.active]:[]),...(board?.bench||[])].some(inst=>{
+        return [...(board?.active?[board.active]:[]),...(board?.bench||[])].filter(inst=>inst&&inst!==excludeInst).some(inst=>{
           const card=CARD_MAP[inst.cardId]||{};
           return [card.sourceNameEN,card.name,card.jpName,card.enDetail?.name].filter(Boolean)
             .some(value=>String(value).trim().toLowerCase()===wanted||String(value).trim().toLowerCase()===wanted+' ex');
@@ -10845,6 +10846,7 @@ if(gameplay) this.gameplayLoaded.add(code); if(collection) this.collectionLoaded
         if(ownEffect.retreatCostZeroIfNamedPokemonInPlay&&this.hasPokemonNamed(side,ownEffect.retreatCostZeroIfNamedPokemonInPlay))return 0;
         if(inst===board?.active&&[board?.active,...(board?.bench||[])].filter(Boolean).some(p=>CARD_MAP[p.cardId]?.ability?.genericEffect?.activeRetreatCostZero))return 0;
         let cost=Math.max(0,Number(card?.retreat)||0);
+        if(ownEffect.retreatCostReductionIfAnotherNamedPokemonInPlay&&this.hasPokemonNamed(side,ownEffect.retreatCostReductionIfAnotherNamedPokemonInPlay,inst))cost-=Math.max(0,Number(ownEffect.retreatCostReduction)||0);
         const increase=Number(inst.retreatCostIncreaseUntilTurn||0)>=this.turn?Math.max(0,Number(inst.retreatCostIncrease)||0):0;
         cost+=increase;
         if(inst===board?.active){
